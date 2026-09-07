@@ -15,9 +15,6 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    env:
-      APEX_DATA: ${{ runner.temp }}/emby-apex-data
-      APEX_IMAGE: ${{ runner.temp }}/emby-apex-image
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -34,6 +31,9 @@ jobs:
 
       - name: Run Python tests
         run: python -m unittest discover -s tests -v
+        env:
+          APEX_DATA: ${{ runner.temp }}/emby-apex-data
+          APEX_IMAGE: ${{ runner.temp }}/emby-apex-image
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
