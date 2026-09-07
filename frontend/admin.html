@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0912" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Emby Apex" />
+    <meta name="format-detection" content="telephone=no" />
+    <title>Emby Apex</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="320x320" href="/static/logoicon.png" />
+    <link rel="apple-touch-icon" sizes="320x320" href="/static/logoicon.png" />
+    <link rel="stylesheet" href="/static/ui.css" />
+  </head>
+  <body class="admin-shell">
+    <div id="app"></div>
+    <noscript><main style="padding:2rem;font:16px system-ui">Emby Apex 管理端需要启用 JavaScript。</main></noscript>
+    <script defer src="/static/app.js"></script>
+    <script type="module" src="/src/admin/main.ts"></script>
+  </body>
+</html>

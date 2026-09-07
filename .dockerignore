@@ -1,0 +1,28 @@
+.env
+.env.example
+.git/
+.github/
+.local-data/
+.local-*/
+.qa-data/
+.qa-*/
+.qa-browser-profile/
+.local-image/
+.qa-image/
+data/
+image/
+frontend/
+tests/
+docs/
+# Runtime static Vue output lives under app/static/frontend and is intentionally
+# included by `COPY app ./app`; only the development tree is excluded above.
+**/node_modules/
+**/.pytest_cache/
+**/__pycache__/
+**/*.exe
+*.pyc
+*.db*
+*.log
+*.err
+*.key
+*.zip

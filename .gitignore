@@ -1,0 +1,26 @@
+.env
+docker-compose.yml
+
+# Local runtime data, QA output and browser profiles.
+.local-*/
+.qa-*/
+.qa-browser-profile/
+data/
+image/
+
+# Runtime secrets, databases and logs.
+secret.key
+*.db*
+*.log
+*.err
+
+# Python and frontend build caches.
+__pycache__/
+.pytest_cache/
+*.py[cod]
+.venv/
+frontend/node_modules/
+
+# Internal development notes and downloaded archives.
+docs/
+*.zip

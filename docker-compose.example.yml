@@ -1,0 +1,20 @@
+services:
+  emby-apex:
+    image: ghcr.io/beatter789/emby-apex:latest
+    container_name: emby-apex
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+      - ./image:/image
+    ports:
+      - "8000:8000"
+      - "8080:8080"
+    environment:
+      APEX_USER: admin
+      APEX_PASSWORD: change-me-now
+      TZ: Asia/Shanghai
+      APEX_COOKIE: "false"
+      APEX_DATA: /data
+      APEX_IMAGE: /image
+      APEX_ADMIN_PORT: "8000"
+      APEX_PORTAL_PORT: "8080"
