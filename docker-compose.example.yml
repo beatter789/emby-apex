@@ -11,7 +11,7 @@ services:
       - "8080:8080"
     environment:
       APEX_USER: admin
-      APEX_PASSWORD: change-me-now
+      APEX_PASSWORD: admin
       TZ: Asia/Shanghai
       APEX_COOKIE: "false"
       APEX_DATA: /data
