@@ -15,6 +15,9 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      APEX_DATA: ${{ runner.temp }}/emby-apex-data
+      APEX_IMAGE: ${{ runner.temp }}/emby-apex-image
     steps:
       - name: Check out source
         uses: actions/checkout@v4
