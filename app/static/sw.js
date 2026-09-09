@@ -13,7 +13,7 @@ const STATIC_ASSETS = [
   '/manifest.webmanifest',
   '/static/frontend/admin.js',
   '/static/frontend/portal.js',
-  '/static/frontend/chunks/mount-ByrGqVO9.js',
+  '/static/frontend/chunks/mount-CFIGgn9i.js',
   '/static/frontend/assets/mount.css',
   '/static/frontend/assets/portal.css',
 ];

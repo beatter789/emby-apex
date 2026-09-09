@@ -1,5 +1,6 @@
 """Stable JSON API boundary used by the incremental frontend migration."""
 
+from datetime import date as date_type
 import logging
 from typing import Annotated, Any
 
@@ -45,7 +46,9 @@ def create_api_router(scope: str) -> APIRouter:
         router.include_router(admin_router)
 
         @router.get("/dashboard")
-        async def dashboard_api(request: Request, db: DbSession) -> JSONResponse:
+        async def dashboard_api(
+            request: Request, db: DbSession, date: str | None = None
+        ) -> JSONResponse:
             """Return the administrator dashboard without exposing credentials."""
             if not is_logged_in(request):
                 return _error("未登录或登录已失效", status_code=401)
@@ -53,9 +56,21 @@ def create_api_router(scope: str) -> APIRouter:
             # Import lazily to keep the API package independent from portal
             # authentication while reusing the dashboard snapshot helper.
             from .. import routes as admin_routes
+            from ..stats import WatchDateError
 
             try:
-                snapshot: dict[str, Any] = await admin_routes._dashboard_snapshot(db)
+                selected_date = date_type.fromisoformat(date) if date is not None else None
+                if selected_date is not None and selected_date.isoformat() != date:
+                    raise ValueError
+            except ValueError:
+                return _error("日期格式无效，请使用 YYYY-MM-DD", status_code=400)
+
+            try:
+                snapshot: dict[str, Any]
+                if selected_date is None:
+                    snapshot = await admin_routes._dashboard_snapshot(db)
+                else:
+                    snapshot = await admin_routes._dashboard_snapshot(db, selected_date)
                 data = {
                     "summary": snapshot["summary"],
                     "sessions": snapshot["sessions"],
@@ -66,6 +81,8 @@ def create_api_router(scope: str) -> APIRouter:
                     "poll_interval": snapshot["poll_interval"],
                 }
                 return JSONResponse({"ok": True, "data": data, "error": None})
+            except WatchDateError as exc:
+                return _error(str(exc), status_code=400)
             except Exception:
                 logger.exception("管理端总览 API 生成失败")
                 return _error("总览数据暂时不可用，请稍后重试", status_code=500)

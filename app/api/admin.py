@@ -87,7 +87,11 @@ def _server_row(server: Server) -> dict[str, Any]:
     }
 
 
-def _user_row(user: ManagedUser, server_name: str, playing: bool) -> dict[str, Any]:
+def _user_row(
+    user: ManagedUser,
+    server_name: str,
+    playing: bool,
+) -> dict[str, Any]:
     return {
         "id": user.id,
         "server_id": user.server_id,
@@ -110,6 +114,9 @@ def _user_row(user: ManagedUser, server_name: str, playing: bool) -> dict[str, A
         "registered_at": iso_seconds(services.as_utc(user.registered_at)),
         "synced_at": iso_seconds(services.as_utc(user.synced_at)),
         "is_playing": playing,
+        "total_playback_seconds": float(user.total_playback_seconds or 0),
+        "playback_hours": round((user.total_playback_seconds or 0) / 3600, 1),
+        "last_played_at": iso_seconds(services.as_utc(user.last_played_at)),
         "policy": services.policy_for_user(user),
         "client_policy_mode": user.client_policy_mode,
         "client_patterns": user.client_patterns,
@@ -428,7 +435,14 @@ async def users(request: Request, db: DbSession, server_id: int | None = None, q
     rows = (await db.scalars(query)).all()
     playing = {(item.server_id, item.emby_user_id) for item in scheduler.live_cache}
     return ok({
-        "users": [_user_row(row, server_names.get(row.server_id, "?"), (row.server_id, row.emby_user_id) in playing) for row in rows],
+        "users": [
+            _user_row(
+                row,
+                server_names.get(row.server_id, "?"),
+                (row.server_id, row.emby_user_id) in playing,
+            )
+            for row in rows
+        ],
         "servers": [_server_row(row) for row in servers_rows],
     })
 
@@ -507,6 +521,18 @@ async def batch_users(request: Request, db: DbSession) -> Any:
         except (EmbyError, ValueError, services.RegistrationError):
             results.append({"id": user.id, "ok": False, "username": user.username, "message": "操作失败"})
     return ok({"results": results, "success": sum(1 for row in results if row["ok"]), "total": len(results)})
+
+
+@router.get("/users/{user_id}")
+async def user_detail(user_id: int, request: Request, db: DbSession) -> Any:
+    if not _admin_required(request):
+        return error("未登录或登录已失效", status_code=401)
+    user = await db.get(ManagedUser, user_id)
+    if user is None:
+        return error("用户不存在", status_code=404)
+    server = await db.get(Server, user.server_id)
+    playing = any(item.server_id == user.server_id and item.emby_user_id == user.emby_user_id for item in scheduler.live_cache)
+    return ok(_user_row(user, server.name if server else "?", playing))
 
 
 @router.patch("/users/{user_id}")

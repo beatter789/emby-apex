@@ -104,7 +104,7 @@ FIELD_SPECS: dict[str, tuple[str, int | None, int | None, str, str]] = {
         "到期后保留天数",
         "到期先关播放，这么多天后仍未续期才删号，0 为到期即删",
     ),
-    "history_retention_days": ("int", 1, 3650, "播放历史保留天数", "超期记录自动清理"),
+    "history_retention_days": ("int", 180, 180, "播放历史保留天数", "固定保留 180 天，账号累计播放时长不受历史清理影响"),
     "registration_enabled": ("bool", None, None, "开放自助注册", "关掉后注册页返回 404"),
     "claim_enabled": (
         "bool",
@@ -210,7 +210,7 @@ def _from_env() -> RuntimeSettings:
         expiry_remind_days=_env.expiry_remind_days,
         activation_grace_hours=_env.activation_grace_hours,
         purge_after_expiry_days=_env.purge_after_expiry_days,
-        history_retention_days=_env.history_retention_days,
+        history_retention_days=180,
         registration_enabled=_env.registration_enabled,
         claim_enabled=False,
         allow_emby_self_password=False,

@@ -62,6 +62,8 @@ _ADDED_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("activation_failed_attempts", "INTEGER NOT NULL DEFAULT 0"),
         ("activation_locked", "BOOLEAN NOT NULL DEFAULT 0"),
         ("activation_locked_at", "DATETIME"),
+        ("total_playback_seconds", "FLOAT NOT NULL DEFAULT 0"),
+        ("last_played_at", "DATETIME"),
     ],
     "redeem_codes": [
         ("owner_user_id", "INTEGER REFERENCES managed_users(id) ON DELETE CASCADE"),
@@ -125,6 +127,15 @@ async def _add_missing_columns(conn) -> None:
                 continue
             await conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
             logger.info("数据库升级：%s 新增列 %s", table, name)
+        if table == "managed_users" and "total_playback_seconds" not in existing:
+            # Backfill only when adding the counter, before any history purge.
+            await conn.exec_driver_sql(
+                "UPDATE managed_users SET total_playback_seconds = COALESCE("
+                "(SELECT SUM(watched_seconds) FROM playback_records p WHERE "
+                "p.server_id = managed_users.server_id AND p.emby_user_id = managed_users.emby_user_id), 0), "
+                "last_played_at = (SELECT MAX(started_at) FROM playback_records p WHERE "
+                "p.server_id = managed_users.server_id AND p.emby_user_id = managed_users.emby_user_id)"
+            )
 
 
 async def _run_backfill(conn) -> None:
@@ -157,6 +168,10 @@ async def _ensure_indexes(conn) -> None:
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_redeem_codes_source_bill_code "
         "ON redeem_codes (source_bill_code) WHERE source_bill_code IS NOT NULL"
     )
+    await conn.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_playback_server_user "
+        "ON playback_records (server_id, emby_user_id)"
+    )
 
 
 async def init_db() -> None:
@@ -185,6 +200,7 @@ async def init_db() -> None:
             from . import services
 
             await services.reset_open_playback_records(session)
+            await services.purge_old_history(session)
         _initialized = True
 
 

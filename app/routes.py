@@ -6,7 +6,7 @@ dashboard API imports its snapshot and sanitization helpers, while ``/wechat``
 is registered by ``app.api.wechat``.
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import asyncio
 import logging
 import re
@@ -188,7 +188,9 @@ def _safe_server_url(value: str) -> str:
     return urlunsplit((parsed.scheme, netloc, "", "", ""))
 
 
-async def _dashboard_snapshot(db: AsyncSession) -> dict[str, object]:
+async def _dashboard_snapshot(
+    db: AsyncSession, selected_date: date | None = None
+) -> dict[str, object]:
     """Build the dashboard data returned by the versioned JSON API."""
     servers = (await db.scalars(select(Server).order_by(Server.name))).all()
     users = (await db.scalars(select(ManagedUser))).all()
@@ -243,7 +245,7 @@ async def _dashboard_snapshot(db: AsyncSession) -> dict[str, object]:
     return {
         "summary": summary,
         "sessions": [session.__dict__.copy() for session in scheduler.live_cache],
-        "watch_time": await stats.today_watch_time(db),
+        "watch_time": await stats.watch_time_for_date(db, selected_date),
         "trend": await stats.daily_trend(db, 7),
         "servers": server_rows,
         "logs": log_rows,

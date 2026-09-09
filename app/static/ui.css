@@ -366,6 +366,10 @@ details[open] summary { margin-bottom: 12px; color: var(--text); }
 .vue-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 15px; }
 .vue-section-heading h2 { margin: 0; }
 .vue-section-heading > svg { color: var(--primary-hover); }
+.watch-time-heading { align-items: end; }
+.watch-date-field { display: grid; gap: 4px; min-width: 150px; margin: 0; }
+.watch-date-field span { color: var(--muted); font-size: 11px; }
+.watch-date-field input { min-height: 36px; }
 .vue-request-tabs .tab { display: inline-flex; align-items: center; gap: 5px; min-height: 42px; border: 0; border-bottom: 2px solid transparent; background: transparent; cursor: pointer; }
 .vue-request-tabs .tab.on { border-bottom-color: var(--primary); }
 .vue-request-results { margin-top: 19px; }
@@ -733,6 +737,8 @@ details[open] summary { margin-bottom: 12px; color: var(--text); }
   .vue-request-tabs .tab { padding-inline: 8px; font-size: 12px; }
   .vue-section-heading { gap: 8px; }
   .vue-section-heading h2 { font-size: 15px; }
+  .watch-time-heading { align-items: stretch; flex-direction: column; }
+  .watch-date-field { min-width: 0; }
   .vue-result-card { min-height: 0; }
   .facts { grid-template-columns: 1fr 1fr; gap: 8px 12px; }
   .detail-layout { grid-template-columns: 88px 1fr; gap: 13px; }

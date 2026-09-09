@@ -13,7 +13,7 @@ import { goBack as navigateBack } from '../shared/router';
 type DashboardData = {
   summary: { servers: number; users: number; disabled: number; expiring: number; playing: number };
   sessions: Array<Record<string, any>>;
-  watch_time: { date: string; hours: number; users: Array<{ username: string; plays: number; hours: number }> };
+  watch_time: { date: string; min_date: string; max_date: string; hours: number; seconds: number; users: Array<{ username: string; plays: number; hours: number; seconds?: number; server_id?: number; emby_user_id?: string; server_name?: string }> };
   trend: Array<{ date: string; plays: number; hours: number }>;
   servers: Array<Record<string, any>>;
   logs: Array<Record<string, any>>;
@@ -67,6 +67,10 @@ const adminNavGroups = [
 
 const currentPath = ref(window.location.pathname || '/dashboard');
 const data = ref<DashboardData | null>(null);
+const watchDate = ref('');
+const watchTimeLoading = ref(false);
+const watchTimeError = ref('');
+let dashboardRequestId = 0;
 const pageData = ref<Record<string, any> | null>(null);
 const settings = ref<SettingRow[]>([]);
 const registrationServers = ref<Array<Record<string, any>>>([]);
@@ -296,7 +300,7 @@ function localDateTimeSeconds(value: unknown): string {
   const pad = (part: number) => String(part).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
-function openUserDetails(user: Record<string, any>): void {
+async function openUserDetails(user: Record<string, any>): Promise<void> {
   selectedUser.value = user;
   userEdit.value = {
     expires_at: localDateTimeSeconds(user.expires_at),
@@ -310,6 +314,12 @@ function openUserDetails(user: Record<string, any>): void {
   userDialogNotice.value = '';
   userDialogError.value = '';
   userDialogOpen.value = true;
+  try {
+    const response = await getApi<Record<string, any>>(`/users/${user.id}`);
+    if (response.data && userDialogOpen.value && selectedUser.value?.id === user.id) selectedUser.value = response.data;
+  } catch (reason) {
+    if (userDialogOpen.value && selectedUser.value?.id === user.id) userDialogError.value = safeOperationError(reason, '用户详情加载');
+  }
 }
 function closeUserDetails(): void {
   if (!userDialogBusy.value) userDialogOpen.value = false;
@@ -439,31 +449,39 @@ function fail(reason: unknown, fallback: string): void {
 }
 async function loadCsrf(): Promise<void> { csrfToken.value = (await getApi<{ csrf_token: string }>('/auth/csrf')).data?.csrf_token || ''; }
 async function loadDashboard(silent = false): Promise<void> {
+  const requestId = ++dashboardRequestId;
   if (!silent) loading.value = true;
   error.value = '';
   try {
-    const response = await getApi<DashboardData>('/dashboard');
+    const query = watchDate.value ? `?date=${encodeURIComponent(watchDate.value)}` : '';
+    const response = await getApi<DashboardData>(`/dashboard${query}`);
+    if (requestId !== dashboardRequestId) return;
     data.value = response.data; pageData.value = null;
+    watchTimeError.value = '';
     if (data.value) { if (pollTimer) clearInterval(pollTimer); pollTimer = setInterval(() => { if (currentPath.value === '/dashboard' || currentPath.value === '/') void loadDashboardSilently(); }, Math.max(5, data.value.poll_interval) * 1000); }
-  } catch (reason) { fail(reason, '总览加载失败，请稍后重试。'); }
-  finally { if (!silent) loading.value = false; }
+  } catch (reason) {
+    if (requestId !== dashboardRequestId) return;
+    if (watchTimeLoading.value) watchTimeError.value = safeOperationError(reason, '观看时长加载');
+    else fail(reason, '总览加载失败，请稍后重试。');
+  } finally {
+    if (requestId === dashboardRequestId) { loading.value = false; watchTimeLoading.value = false; }
+  }
 }
 async function loadDashboardSilently(): Promise<void> {
-  if (loading.value || currentPath.value !== '/dashboard' && currentPath.value !== '/') return;
-  try {
-    const response = await getApi<DashboardData>('/dashboard');
-    if (response.data && data.value) {
-      // Keep the rendered dashboard stable during polling: sessions and trend
-      // are live data, while the surrounding panels should not be re-mounted.
-      data.value = {
-        ...data.value,
-        summary: { ...data.value.summary, playing: response.data.summary.playing },
-        sessions: response.data.sessions,
-        watch_time: response.data.watch_time,
-        trend: response.data.trend,
-      };
-    }
-  } catch (reason) { fail(reason, '总览自动刷新失败，请稍后重试。'); }
+  if (loading.value || watchTimeLoading.value || currentPath.value !== '/dashboard' && currentPath.value !== '/') return;
+  await loadDashboard(true);
+}
+function changeWatchDate(value: string): void {
+  watchDate.value = value;
+  watchTimeLoading.value = true;
+  watchTimeError.value = '';
+  void loadDashboard(true);
+}
+function playbackDuration(value: number | undefined): string {
+  const seconds = Math.max(0, Math.floor(value || 0));
+  if (seconds < 60) return `${seconds} 秒`;
+  const minutes = Math.floor(seconds / 60);
+  return minutes < 60 ? `${minutes} 分钟` : `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分钟`;
 }
 async function loadResource(silent = false): Promise<void> {
   if (!silent) loading.value = true;
@@ -805,9 +823,9 @@ onBeforeUnmount(cleanup);
         <div v-if="loading" class="panel vue-state"><LoaderCircle class="spin" :size="22" /><span>正在加载…</span></div>
 
         <template v-else-if="data">
-          <div class="cards"><div class="card"><div class="n">{{ data.summary.playing }}</div><div class="l">正在播放</div></div><div class="card"><div class="n">{{ data.summary.servers }}</div><div class="l">服务器</div></div><div class="card"><div class="n">{{ data.summary.users }}</div><div class="l">用户总数</div></div><div class="card"><div class="n">{{ data.summary.disabled }}</div><div class="l">已停用</div></div><div class="card"><div class="n">{{ data.summary.expiring }}</div><div class="l">即将到期</div></div><div class="card"><div class="n">{{ data.watch_time.hours }}h</div><div class="l">今日观看时长</div></div></div>
+          <div class="cards"><div class="card"><div class="n">{{ data.summary.playing }}</div><div class="l">正在播放</div></div><div class="card"><div class="n">{{ data.summary.servers }}</div><div class="l">服务器</div></div><div class="card"><div class="n">{{ data.summary.users }}</div><div class="l">用户总数</div></div><div class="card"><div class="n">{{ data.summary.disabled }}</div><div class="l">已停用</div></div><div class="card"><div class="n">{{ data.summary.expiring }}</div><div class="l">即将到期</div></div><div class="card"><div class="n">{{ data.watch_time.hours }}h</div><div class="l">{{ data.watch_time.date }} 观看时长</div></div></div>
           <section class="panel"><div class="row" style="justify-content:space-between"><h2>正在播放</h2><span class="small muted">每 {{ data.poll_interval }} 秒自动刷新</span></div><div v-if="!data.sessions.length" class="empty">当前没有正在播放的会话。</div><table v-else><thead><tr><th>用户</th><th>内容</th><th>客户端</th><th>进度</th><th>操作</th></tr></thead><tbody><tr v-for="session in data.sessions" :key="`${session.server_id}:${session.session_id}`"><td>{{ session.username || '—' }}</td><td>{{ session.item_name || session.title || '—' }}</td><td>{{ session.client || session.device_name || '—' }}</td><td>{{ session.progress_percent ?? '—' }}{{ session.progress_percent != null ? '%' : '' }}</td><td><button class="danger sm" type="button" @click="stopSession(session)">停止</button></td></tr></tbody></table></section>
-          <section class="panel"><div class="row" style="justify-content:space-between"><h2>今日用户观看时长</h2><span class="small muted">{{ data.watch_time.date }} · {{ data.watch_time.hours }} 小时</span></div><div v-if="!data.watch_time.users.length" class="empty">今日暂无已完成的播放记录。</div><table v-else><thead><tr><th>用户</th><th>播放次数</th><th>观看时长</th></tr></thead><tbody><tr v-for="user in data.watch_time.users" :key="user.username"><td>{{ user.username || '—' }}</td><td>{{ user.plays }}</td><td>{{ user.hours }} 小时</td></tr></tbody></table></section>
+          <section class="panel"><div class="vue-section-heading watch-time-heading"><div><h2>用户观看时长排行</h2><p class="hint">只统计已结束的播放记录，按观看时长排序。</p></div><label class="watch-date-field"><span>选择日期</span><input :value="data.watch_time.date" type="date" :min="data.watch_time.min_date" :max="data.watch_time.max_date" @change="changeWatchDate(($event.target as HTMLInputElement).value)"></label></div><div v-if="watchTimeError" class="msg error" role="alert"><AlertCircle :size="16" />{{ watchTimeError }}</div><div v-else-if="!data.watch_time.users.length" class="empty">{{ data.watch_time.date }} 暂无已完成的播放记录。</div><table v-else><thead><tr><th>用户</th><th>服务器</th><th>播放次数</th><th>观看时长</th></tr></thead><tbody><tr v-for="(user, index) in data.watch_time.users" :key="`${user.server_id ?? user.username}:${user.emby_user_id ?? index}`"><td>{{ user.username || '—' }}</td><td>{{ user.server_name || '—' }}</td><td>{{ user.plays }}</td><td>{{ playbackDuration(user.seconds ?? user.hours * 3600) }}</td></tr></tbody></table></section>
           <section class="panel"><div class="row" style="justify-content:space-between"><h2>播放趋势</h2><span class="small muted">最近 7 天</span></div><div class="chart-bars" aria-label="最近 7 天播放次数"><div v-for="point in data.trend" :key="point.date" class="chart-bar" :title="`${point.date}：${point.plays} 次`"><i :style="{ height: `${(point.plays / maxPlays) * 100}%` }"></i><span>{{ point.date.slice(5) }}</span></div></div></section>
           <section class="panel"><h2>服务器状态</h2><div v-if="!data.servers.length" class="empty">还没有添加服务器。</div><table v-else><thead><tr><th>名称</th><th>地址</th><th>版本</th><th>状态</th><th>最近成功</th></tr></thead><tbody><tr v-for="server in data.servers" :key="server.id"><td>{{ server.name }}</td><td class="small muted">{{ server.base_url || '—' }}</td><td>{{ server.server_version || '—' }}</td><td><span class="badge" :class="server.status === 'ok' ? 'ok' : server.status === 'error' ? 'off' : ''">{{ server.status === 'ok' ? '正常' : server.status === 'error' ? '异常' : '已暂停' }}</span></td><td class="small muted">{{ formatDateTime(server.last_ok_at) }}</td></tr></tbody></table></section>
           <section class="panel"><h2>最近动作</h2><div v-if="!data.logs.length" class="empty">暂无记录</div><table v-else><tbody><tr v-for="log in data.logs" :key="`${log.created_at}:${log.action}`"><td class="small muted">{{ formatDateTime(log.created_at) }}</td><td>{{ ['user_policy_updated', 'emby_policy_updated', 'policy_updated'].includes(log.action) ? '播放策略' : log.action }}</td><td>{{ log.detail || '—' }}</td></tr></tbody></table></section>
@@ -938,7 +956,7 @@ onBeforeUnmount(cleanup);
           <div v-if="userDialogError" class="msg error" role="alert"><AlertCircle :size="16" />{{ userDialogError }}<a v-if="userDialogError.includes('登录')" href="/login" class="button-link">重新登录</a></div>
           <div v-if="userDialogNotice" class="msg notice" role="status"><CheckCircle2 :size="16" />{{ userDialogNotice }}</div>
           <form class="user-detail-form" @submit.prevent="saveUserDetails">
-            <div class="user-detail-summary"><span><strong>注册时间</strong>{{ formatDateTime(selectedUser?.registered_at) }}</span><span><strong>最后同步</strong>{{ formatDateTime(selectedUser?.synced_at) }}</span><span><strong>当前播放</strong>{{ selectedUser?.is_playing ? '正在播放' : '未播放' }}</span></div>
+            <div class="user-detail-summary"><span><strong>注册时间</strong>{{ formatDateTime(selectedUser?.registered_at) }}</span><span><strong>最后同步</strong>{{ formatDateTime(selectedUser?.synced_at) }}</span><span><strong>当前播放</strong>{{ selectedUser?.is_playing ? '正在播放' : '未播放' }}</span><span><strong>最近播放</strong>{{ formatDateTime(selectedUser?.last_played_at) }}</span><span><strong>合计播放时长</strong>{{ playbackDuration(selectedUser?.total_playback_seconds) }}</span></div>
             <label class="switch-field"><input v-model="userEdit.permanent" type="checkbox"><span><strong>永久账户</strong><small>永久账户不设置到期时间。</small></span></label>
             <label v-if="!userEdit.permanent"><span>到期时间</span><input v-model="userEdit.expires_at" type="datetime-local" step="1"><small class="muted">精确到秒，按本地时间保存。</small></label>
             <label class="switch-field"><input v-model="userEdit.playback_enabled" type="checkbox"><span><strong>播放权限</strong><small>{{ userEdit.playback_enabled ? '允许播放媒体内容。' : '已禁止播放媒体内容。' }}</small></span></label>

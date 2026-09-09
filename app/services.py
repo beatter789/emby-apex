@@ -51,6 +51,7 @@ _settings = get_settings()
 _PLAYBACK_PROCESS_ID = uuid4().hex[:12]
 _playback_lock = asyncio.Lock()
 _user_sync_lock = asyncio.Lock()
+_user_mutation_lock = asyncio.Lock()
 
 # TMDB 详情在搜索结果中通常已经完整返回；该缓存主要覆盖直接打开
 # TMDB ID 链接，避免同一作品在短时间内反复建立 HTTP 连接。
@@ -104,6 +105,11 @@ class _PlaybackAccumulator:
 
 _playback_cache: dict[tuple[int, str, str], _PlaybackAccumulator] = {}
 _playback_generations: dict[tuple[int, str, str], int] = {}
+_deleted_playback_users: set[tuple[int, str]] = set()
+
+
+def playback_user_deleted(server_id: int, emby_user_id: str) -> bool:
+    return (server_id, emby_user_id) in _deleted_playback_users
 
 # 老账号认领要拿用户填的密码去问 Emby，等于在公开端点上开了一个在线验密入口。
 # 按用户名限流，避免被拿来撞库。单进程内存计数，够用且不引依赖。
@@ -424,6 +430,11 @@ async def log_action(
 
 
 async def sync_server_users(db: AsyncSession, server: Server) -> int:
+    async with _user_mutation_lock:
+        return await _sync_server_users(db, server)
+
+
+async def _sync_server_users(db: AsyncSession, server: Server) -> int:
     """批量同步用户、完整 Policy 和媒体库快照，尽量避免无变化写入。"""
     now = utcnow()
     async with client_for(server) as client:
@@ -463,6 +474,7 @@ async def sync_server_users(db: AsyncSession, server: Server) -> int:
             if not user_id:
                 continue
             seen.add(user_id)
+            _deleted_playback_users.discard((server.id, user_id))
             policy = dict(entry.get("Policy") or {})
             record = existing.get(user_id)
             if record is None:
@@ -472,6 +484,20 @@ async def sync_server_users(db: AsyncSession, server: Server) -> int:
                     username="",
                     playback_source="emby",
                 )
+                prior_seconds = await db.scalar(
+                    select(func.coalesce(func.sum(PlaybackRecord.watched_seconds), 0)).where(
+                        PlaybackRecord.server_id == server.id,
+                        PlaybackRecord.emby_user_id == user_id,
+                    )
+                )
+                prior_last = await db.scalar(
+                    select(func.max(PlaybackRecord.started_at)).where(
+                        PlaybackRecord.server_id == server.id,
+                        PlaybackRecord.emby_user_id == user_id,
+                    )
+                )
+                record.total_playback_seconds = float(prior_seconds or 0)
+                record.last_played_at = prior_last
                 db.add(record)
             elif record.playback_source not in {"controller", "emby"}:
                 record.playback_source = "controller" if record.self_registered else "emby"
@@ -544,7 +570,7 @@ async def sync_server_users(db: AsyncSession, server: Server) -> int:
         # Emby 上已删除的用户，本地影子记录也清理掉（只删本地行，不回头动 Emby）。
         for user_id, record in existing.items():
             if user_id not in seen:
-                await db.delete(record)
+                await _delete_local_user_data(db, record, server)
 
     server.server_version = info.get("Version") or server.server_version
     previous_ok = as_utc(server.last_ok_at)
@@ -811,7 +837,7 @@ async def _record_playback(
     item = session.get("NowPlayingItem") or {}
     play_state = session.get("PlayState") or {}
     session_id = session.get("Id")
-    if not session_id:
+    if not session_id or playback_user_deleted(server.id, str(session.get("UserId") or "")):
         return
 
     base_key = (server.id, str(session_id), str(item.get("Id") or "unknown"))
@@ -861,6 +887,7 @@ async def _flush_playback_entries(
     db: AsyncSession, entries: list[_PlaybackAccumulator], *, ended_at: datetime | None = None
 ) -> int:
     """一次性把内存聚合结果写入历史表。"""
+    entries = [entry for entry in entries if not playback_user_deleted(entry.server_id, entry.emby_user_id)]
     for entry in entries:
         db.add(
             PlaybackRecord(
@@ -885,6 +912,21 @@ async def _flush_playback_entries(
                 ended_at=ended_at or entry.last_seen_at,
             )
         )
+        if hasattr(db, "execute"):
+            await db.execute(
+                update(ManagedUser)
+                .where(ManagedUser.server_id == entry.server_id,
+                       ManagedUser.emby_user_id == entry.emby_user_id)
+                .values(
+                    total_playback_seconds=ManagedUser.total_playback_seconds + entry.watched_seconds,
+                    last_played_at=case(
+                        (or_(ManagedUser.last_played_at.is_(None),
+                             ManagedUser.last_played_at < entry.started_at), entry.started_at),
+                        else_=ManagedUser.last_played_at,
+                    ),
+                )
+                .execution_options(synchronize_session=False)
+            )
     if entries:
         await db.commit()
     return len(entries)
@@ -909,7 +951,8 @@ async def poll_sessions_by_server(db: AsyncSession) -> SessionPollResult:
                         server.last_error = None
                     successful_server_ids.add(server.id)
 
-                    playing = [s for s in raw_sessions if s.get("NowPlayingItem")]
+                    playing = [s for s in raw_sessions if s.get("NowPlayingItem")
+                               and not playback_user_deleted(server.id, str(s.get("UserId") or ""))]
                     seen_keys: set[tuple[int, str, str]] = set()
                     for session in playing:
                         item = session.get("NowPlayingItem") or {}
@@ -975,6 +1018,8 @@ async def process_webhook_event(
         return {"kind": "ignored", "session": None, "ended_keys": []}
 
     async with _playback_lock:
+        if playback_user_deleted(server.id, str(session.get("UserId") or "")):
+            return {"kind": "ignored", "session": None, "ended_keys": []}
         if kind == "stop":
             matching = [
                 key
@@ -2059,6 +2104,11 @@ async def set_user_protected(
 
 
 async def admin_delete_user(db: AsyncSession, user: ManagedUser) -> str:
+    async with _user_mutation_lock:
+        return await _admin_delete_user(db, user)
+
+
+async def _admin_delete_user(db: AsyncSession, user: ManagedUser) -> str:
     """管理员手动删号：先删 Emby 账户，成功后再删本地记录。
 
     Emby 删除失败就整体放弃并把错误抛给界面 —— 绝不能只删本地影子记录，
@@ -2090,17 +2140,7 @@ async def admin_delete_user(db: AsyncSession, user: ManagedUser) -> str:
         raise RegistrationError(f"删除 Emby 账户失败，已中止：{exc}") from exc
 
     username = user.username
-    await db.delete(user)
-    await log_action(
-        db,
-        "user_deleted",
-        "管理员手动删除，Emby 账户已同步删除",
-        level="warning",
-        server_name=server.name,
-        username=username,
-        commit=False,
-    )
-    await db.commit()
+    await _delete_local_user_data(db, user, server)
     await _safe_notify(
         "账户已删除", f"{server.name} / {username}：管理员手动删除。", category="general"
     )
@@ -2323,6 +2363,13 @@ async def purge_expired_users(db: AsyncSession) -> int:
 async def _delete_managed_user(
     db: AsyncSession, user: ManagedUser, *, reason: str
 ) -> bool:
+    async with _user_mutation_lock:
+        return await _delete_managed_user_locked(db, user, reason=reason)
+
+
+async def _delete_managed_user_locked(
+    db: AsyncSession, user: ManagedUser, *, reason: str
+) -> bool:
     """先删 Emby 账号再删本地记录。Emby 删除失败就留着下轮重试。"""
     # 兜底：自动任务永远不碰管理员与受保护账号，即使调用方的筛选条件写错了。
     if not user.deletable:
@@ -2347,24 +2394,74 @@ async def _delete_managed_user(
         return False
 
     username = user.username
-    await db.delete(user)
-    await log_action(
-        db,
-        "user_deleted",
-        reason,
-        server_name=server.name,
-        username=username,
-        commit=False,
-    )
-    await db.commit()
+    await _delete_local_user_data(db, user, server)
     await _safe_notify(
         "账户已删除", f"{server.name} / {username}：{reason}", category="expiry"
     )
     return True
 
 
+async def _delete_local_user_data(db: AsyncSession, user: ManagedUser, server: Server) -> None:
+    """Delete a confirmed-removed account and its data under the playback lock."""
+    from . import scheduler
+
+    identity = (user.server_id, user.emby_user_id)
+    async with _playback_lock:
+        paths = set((await db.scalars(select(MediaRequest.poster_local_path).where(
+            MediaRequest.managed_user_id == user.id,
+            MediaRequest.poster_local_path.is_not(None),
+        ))).all())
+        names = set((await db.scalars(select(PlaybackRecord.username).where(
+            PlaybackRecord.server_id == user.server_id,
+            PlaybackRecord.emby_user_id == user.emby_user_id,
+        ))).all()) | {user.username}
+        other_names = set((await db.scalars(select(ManagedUser.username).where(
+            ManagedUser.id != user.id, ManagedUser.username.in_(names),
+        ))).all())
+        await db.execute(delete(ActionLog).where(
+            or_(
+                (ActionLog.username.in_(names)) & (ActionLog.server_name == server.name),
+                (ActionLog.username.in_(names - other_names)) & ActionLog.server_name.is_(None),
+            )
+        ))
+        await db.execute(delete(PlaybackRecord).where(
+            PlaybackRecord.server_id == user.server_id,
+            PlaybackRecord.emby_user_id == user.emby_user_id,
+        ))
+        await db.execute(delete(BillCodeUsage).where(BillCodeUsage.user_id == user.id))
+        await db.execute(delete(BillCodeDailyUsage).where(BillCodeDailyUsage.user_id == user.id))
+        await db.execute(delete(RedeemCode).where(or_(
+            RedeemCode.owner_user_id == user.id, RedeemCode.used_by_user_id == user.id,
+        )))
+        await db.execute(delete(MediaRequest).where(MediaRequest.managed_user_id == user.id))
+        await db.delete(user)
+        await db.commit()
+        # A poll can publish its result after this transaction has completed.
+        _deleted_playback_users.add(identity)
+        for key, entry in list(_playback_cache.items()):
+            if (entry.server_id, entry.emby_user_id) == identity:
+                _playback_cache.pop(key, None)
+                _playback_generations.pop(key, None)
+        scheduler.remove_live_sessions_for_user(*identity)
+        for name in names - other_names:
+            _claim_attempts.pop(name, None)
+
+    for relative in paths:
+        referenced = await db.scalar(select(MediaRequest.id).where(MediaRequest.poster_local_path == relative).limit(1))
+        shared = await db.scalar(select(MediaRequestSummary.id).where(MediaRequestSummary.poster_local_path == relative).limit(1))
+        if referenced is None and shared is None:
+            path = _safe_image_path(relative)
+            if path is not None:
+                try:
+                    path.unlink()
+                except OSError:
+                    logger.warning("清理已删除用户海报失败")
+
+
 async def purge_old_history(db: AsyncSession) -> int:
-    cutoff = utcnow() - timedelta(days=settings_store.current().history_retention_days)
+    from .stats import playback_retention_start
+
+    cutoff = playback_retention_start()
     result = await db.execute(
         delete(PlaybackRecord).where(
             PlaybackRecord.ended_at.is_not(None),

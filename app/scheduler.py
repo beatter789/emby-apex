@@ -21,6 +21,8 @@ live_cache: list[services.LiveSession] = []
 def update_live_session(entry: services.LiveSession) -> None:
     """兼容旧调用方，合并一个实时会话到缓存。"""
     global live_cache
+    if services.playback_user_deleted(entry.server_id, entry.emby_user_id):
+        return
     key = (entry.server_id, entry.session_id, entry.item_id)
     live_cache = [
         item
@@ -48,6 +50,16 @@ def remove_live_session(
     ]
 
 
+def remove_live_sessions_for_user(server_id: int, emby_user_id: str) -> None:
+    """Remove deleted user's sessions from the dashboard cache immediately."""
+    global live_cache
+    live_cache = [
+        item
+        for item in live_cache
+        if not (item.server_id == server_id and item.emby_user_id == emby_user_id)
+    ]
+
+
 def replace_live_sessions(
     sessions: list[services.LiveSession],
     successful_server_ids: set[int],
@@ -61,7 +73,7 @@ def replace_live_sessions(
         if item.server_id not in successful_server_ids
         and item.server_id in enabled_server_ids
     ]
-    live_cache.extend(sessions)
+    live_cache.extend(item for item in sessions if not services.playback_user_deleted(item.server_id, item.emby_user_id))
 
 
 async def _playback_job() -> None:

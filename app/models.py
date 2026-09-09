@@ -124,6 +124,9 @@ class ManagedUser(Base):
     note: Mapped[str] = mapped_column(Text, default="", nullable=False)
     last_activity_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # 播放累计不随历史记录清理而归零，详情页展示账号生命周期累计值。
+    total_playback_seconds: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    last_played_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     server: Mapped[Server] = relationship(back_populates="users")
 
@@ -334,6 +337,7 @@ class PlaybackRecord(Base):
     __tablename__ = "playback_records"
     __table_args__ = (
         UniqueConstraint("server_id", "session_key", name="uq_server_session"),
+        Index("ix_playback_server_user", "server_id", "emby_user_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
