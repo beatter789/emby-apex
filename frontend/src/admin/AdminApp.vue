@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   AlertCircle, ArrowLeft, Bell, Building2, CalendarClock, CheckCircle2, ChevronDown, Clock3,
-  ChevronRight, Film, ImagePlus, LayoutDashboard, LoaderCircle, LogOut, MessageCircle, MoreHorizontal, RefreshCw,
+  ChevronLeft, ChevronRight, Film, ImagePlus, LayoutDashboard, LoaderCircle, LogOut, MessageCircle, MoreHorizontal, RefreshCw,
   Save, Search, Server, Settings, ShieldCheck, Star, Trash2, Users, Upload, Webhook, WifiOff, X,
 } from 'lucide-vue-next';
 import { ApiError, deleteApi, getApi, patchApi, postApi } from '../shared/api';
@@ -27,6 +27,7 @@ type SettingsTab = 'general' | 'notifications';
 type NotificationCategory = 'registration' | 'expiry' | 'media_request' | 'activation' | 'general';
 type NotificationChannel = 'webhook' | 'telegram' | 'wecom';
 type NotificationState = { busy: string; notice: string; error: string };
+type WatchCalendarDay = { iso: string; label: string; inMonth: boolean; disabled: boolean };
 
 const notificationCategories: Array<{ key: NotificationCategory; label: string; description: string }> = [
   { key: 'registration', label: '注册通知', description: '新用户注册、认领或开通时提醒管理员。' },
@@ -70,6 +71,43 @@ const data = ref<DashboardData | null>(null);
 const watchDate = ref('');
 const watchTimeLoading = ref(false);
 const watchTimeError = ref('');
+const watchDatePickerOpen = ref(false);
+const watchDatePickerMonth = ref('');
+const watchWeekdays = ['日', '一', '二', '三', '四', '五', '六'];
+const watchDateMonthLabel = computed(() => {
+  const month = watchDatePickerMonth.value || data.value?.watch_time.max_date?.slice(0, 7) || '';
+  if (!month) return '';
+  return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', timeZone: 'UTC' })
+    .format(new Date(`${month}-01T00:00:00Z`));
+});
+const watchDateDays = computed<WatchCalendarDay[]>(() => {
+  const minDate = data.value?.watch_time.min_date || '';
+  const maxDate = data.value?.watch_time.max_date || '';
+  const month = watchDatePickerMonth.value || maxDate.slice(0, 7);
+  if (!month) return [];
+  const [year, monthNumber] = month.split('-').map(Number);
+  const first = new Date(Date.UTC(year, monthNumber - 1, 1));
+  const start = new Date(Date.UTC(year, monthNumber - 1, 1 - first.getUTCDay()));
+  return Array.from({ length: 42 }, (_, index) => {
+    const current = new Date(start);
+    current.setUTCDate(start.getUTCDate() + index);
+    const iso = current.toISOString().slice(0, 10);
+    return {
+      iso,
+      label: String(current.getUTCDate()),
+      inMonth: current.getUTCMonth() === monthNumber - 1,
+      disabled: iso < minDate || iso > maxDate,
+    };
+  });
+});
+const watchDatePreviousDisabled = computed(() => {
+  const minMonth = data.value?.watch_time.min_date?.slice(0, 7) || '';
+  return !watchDatePickerMonth.value || watchDatePickerMonth.value <= minMonth;
+});
+const watchDateNextDisabled = computed(() => {
+  const maxMonth = data.value?.watch_time.max_date?.slice(0, 7) || '';
+  return !watchDatePickerMonth.value || watchDatePickerMonth.value >= maxMonth;
+});
 let dashboardRequestId = 0;
 const pageData = ref<Record<string, any> | null>(null);
 const settings = ref<SettingRow[]>([]);
@@ -477,6 +515,30 @@ function changeWatchDate(value: string): void {
   watchTimeError.value = '';
   void loadDashboard(true);
 }
+function openWatchDatePicker(): void {
+  const selected = data.value?.watch_time.date || data.value?.watch_time.max_date || '';
+  watchDatePickerMonth.value = selected.slice(0, 7);
+  watchDatePickerOpen.value = true;
+}
+function closeWatchDatePicker(): void {
+  watchDatePickerOpen.value = false;
+}
+function shiftWatchDateMonth(offset: number): void {
+  if (!watchDatePickerMonth.value) return;
+  const [year, month] = watchDatePickerMonth.value.split('-').map(Number);
+  const next = new Date(Date.UTC(year, month - 1 + offset, 1));
+  watchDatePickerMonth.value = next.toISOString().slice(0, 7);
+}
+function selectWatchDate(day: WatchCalendarDay): void {
+  if (day.disabled) return;
+  changeWatchDate(day.iso);
+}
+function returnToToday(): void {
+  const today = data.value?.watch_time.max_date || '';
+  if (!today) return;
+  watchDatePickerMonth.value = today.slice(0, 7);
+  if (data.value?.watch_time.date !== today) changeWatchDate(today);
+}
 function playbackDuration(value: number | undefined): string {
   const seconds = Math.max(0, Math.floor(value || 0));
   if (seconds < 60) return `${seconds} 秒`;
@@ -825,7 +887,7 @@ onBeforeUnmount(cleanup);
         <template v-else-if="data">
           <div class="cards"><div class="card"><div class="n">{{ data.summary.playing }}</div><div class="l">正在播放</div></div><div class="card"><div class="n">{{ data.summary.servers }}</div><div class="l">服务器</div></div><div class="card"><div class="n">{{ data.summary.users }}</div><div class="l">用户总数</div></div><div class="card"><div class="n">{{ data.summary.disabled }}</div><div class="l">已停用</div></div><div class="card"><div class="n">{{ data.summary.expiring }}</div><div class="l">即将到期</div></div><div class="card"><div class="n">{{ data.watch_time.hours }}h</div><div class="l">{{ data.watch_time.date }} 观看时长</div></div></div>
           <section class="panel"><div class="row" style="justify-content:space-between"><h2>正在播放</h2><span class="small muted">每 {{ data.poll_interval }} 秒自动刷新</span></div><div v-if="!data.sessions.length" class="empty">当前没有正在播放的会话。</div><table v-else><thead><tr><th>用户</th><th>内容</th><th>客户端</th><th>进度</th><th>操作</th></tr></thead><tbody><tr v-for="session in data.sessions" :key="`${session.server_id}:${session.session_id}`"><td>{{ session.username || '—' }}</td><td>{{ session.item_name || session.title || '—' }}</td><td>{{ session.client || session.device_name || '—' }}</td><td>{{ session.progress_percent ?? '—' }}{{ session.progress_percent != null ? '%' : '' }}</td><td><button class="danger sm" type="button" @click="stopSession(session)">停止</button></td></tr></tbody></table></section>
-          <section class="panel"><div class="vue-section-heading watch-time-heading"><div><h2>用户观看时长排行</h2><p class="hint">只统计已结束的播放记录，按观看时长排序。</p></div><label class="watch-date-field"><span>选择日期</span><input :value="data.watch_time.date" type="date" :min="data.watch_time.min_date" :max="data.watch_time.max_date" @change="changeWatchDate(($event.target as HTMLInputElement).value)"></label></div><div v-if="watchTimeError" class="msg error" role="alert"><AlertCircle :size="16" />{{ watchTimeError }}</div><div v-else-if="!data.watch_time.users.length" class="empty">{{ data.watch_time.date }} 暂无已完成的播放记录。</div><table v-else><thead><tr><th>用户</th><th>服务器</th><th>播放次数</th><th>观看时长</th></tr></thead><tbody><tr v-for="(user, index) in data.watch_time.users" :key="`${user.server_id ?? user.username}:${user.emby_user_id ?? index}`"><td>{{ user.username || '—' }}</td><td>{{ user.server_name || '—' }}</td><td>{{ user.plays }}</td><td>{{ playbackDuration(user.seconds ?? user.hours * 3600) }}</td></tr></tbody></table></section>
+          <section class="panel"><div class="vue-section-heading watch-time-heading"><div><h2>用户观看时长排行</h2><p class="hint">只统计已结束的播放记录，按观看时长排序。</p></div><div class="watch-date-controls"><div class="watch-date-picker"><span class="watch-date-label">选择日期</span><button class="secondary sm watch-date-trigger" type="button" aria-haspopup="dialog" :aria-expanded="watchDatePickerOpen" @click="openWatchDatePicker">{{ data.watch_time.date }}</button><div v-if="watchDatePickerOpen" class="watch-date-popover" role="dialog" aria-label="选择观看时长日期"><div class="watch-date-popover-head"><button class="icon-button" type="button" aria-label="上个月" title="上个月" :disabled="watchDatePreviousDisabled" @click="shiftWatchDateMonth(-1)"><ChevronLeft :size="17" /></button><strong>{{ watchDateMonthLabel }}</strong><button class="icon-button" type="button" aria-label="下个月" title="下个月" :disabled="watchDateNextDisabled" @click="shiftWatchDateMonth(1)"><ChevronRight :size="17" /></button></div><div class="watch-date-weekdays"><span v-for="weekday in watchWeekdays" :key="weekday">{{ weekday }}</span></div><div class="watch-date-grid"><button v-for="day in watchDateDays" :key="day.iso" class="watch-date-day" :class="{ muted: !day.inMonth, selected: day.iso === data.watch_time.date }" type="button" :disabled="day.disabled" @click="selectWatchDate(day)">{{ day.label }}</button></div><div class="watch-date-actions"><button class="secondary sm" type="button" :disabled="watchTimeLoading || data.watch_time.date === data.watch_time.max_date" @click="returnToToday">今天</button><button class="primary sm" type="button" @click="closeWatchDatePicker">完成</button></div></div></div></div></div><div v-if="watchTimeError" class="msg error" role="alert"><AlertCircle :size="16" />{{ watchTimeError }}</div><div v-else-if="!data.watch_time.users.length" class="empty">{{ data.watch_time.date }} 暂无已完成的播放记录。</div><table v-else><thead><tr><th>用户</th><th>服务器</th><th>播放次数</th><th>观看时长</th></tr></thead><tbody><tr v-for="(user, index) in data.watch_time.users" :key="`${user.server_id ?? user.username}:${user.emby_user_id ?? index}`"><td>{{ user.username || '—' }}</td><td>{{ user.server_name || '—' }}</td><td>{{ user.plays }}</td><td>{{ playbackDuration(user.seconds ?? user.hours * 3600) }}</td></tr></tbody></table></section>
           <section class="panel"><div class="row" style="justify-content:space-between"><h2>播放趋势</h2><span class="small muted">最近 7 天</span></div><div class="chart-bars" aria-label="最近 7 天播放次数"><div v-for="point in data.trend" :key="point.date" class="chart-bar" :title="`${point.date}：${point.plays} 次`"><i :style="{ height: `${(point.plays / maxPlays) * 100}%` }"></i><span>{{ point.date.slice(5) }}</span></div></div></section>
           <section class="panel"><h2>服务器状态</h2><div v-if="!data.servers.length" class="empty">还没有添加服务器。</div><table v-else><thead><tr><th>名称</th><th>地址</th><th>版本</th><th>状态</th><th>最近成功</th></tr></thead><tbody><tr v-for="server in data.servers" :key="server.id"><td>{{ server.name }}</td><td class="small muted">{{ server.base_url || '—' }}</td><td>{{ server.server_version || '—' }}</td><td><span class="badge" :class="server.status === 'ok' ? 'ok' : server.status === 'error' ? 'off' : ''">{{ server.status === 'ok' ? '正常' : server.status === 'error' ? '异常' : '已暂停' }}</span></td><td class="small muted">{{ formatDateTime(server.last_ok_at) }}</td></tr></tbody></table></section>
           <section class="panel"><h2>最近动作</h2><div v-if="!data.logs.length" class="empty">暂无记录</div><table v-else><tbody><tr v-for="log in data.logs" :key="`${log.created_at}:${log.action}`"><td class="small muted">{{ formatDateTime(log.created_at) }}</td><td>{{ ['user_policy_updated', 'emby_policy_updated', 'policy_updated'].includes(log.action) ? '播放策略' : log.action }}</td><td>{{ log.detail || '—' }}</td></tr></tbody></table></section>
