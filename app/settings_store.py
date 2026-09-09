@@ -86,7 +86,7 @@ class RuntimeSettings:
 # 每项的取值范围与中文标签，供表单渲染与校验共用。
 # (类型, 最小值, 最大值, 标签, 说明)
 FIELD_SPECS: dict[str, tuple[str, int | None, int | None, str, str]] = {
-    "poll_interval_seconds": ("int", 5, 600, "管理端总览刷新间隔（秒）", "仅用于管理端页面刷新当前播放，不产生播放记录写入"),
+    "poll_interval_seconds": ("int", 5, 600, "Emby 播放轮询间隔（秒）", "后台主动获取正在播放记录，同时控制管理端总览刷新频率"),
     "log_level": ("str", None, None, "日志级别", "可选 DEBUG、INFO、WARNING 或 ERROR；默认 WARNING"),
     "expiry_check_minutes": ("int", 1, 1440, "到期检查间隔（分钟）", "多久扫一遍到期用户"),
     "expiry_remind_days": ("int", 0, 60, "到期前提醒天数", "0 表示不提醒"),

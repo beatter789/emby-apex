@@ -13,6 +13,7 @@ import { goBack as navigateBack } from '../shared/router';
 type DashboardData = {
   summary: { servers: number; users: number; disabled: number; expiring: number; playing: number };
   sessions: Array<Record<string, any>>;
+  watch_time: { date: string; hours: number; users: Array<{ username: string; plays: number; hours: number }> };
   trend: Array<{ date: string; plays: number; hours: number }>;
   servers: Array<Record<string, any>>;
   logs: Array<Record<string, any>>;
@@ -458,6 +459,7 @@ async function loadDashboardSilently(): Promise<void> {
         ...data.value,
         summary: { ...data.value.summary, playing: response.data.summary.playing },
         sessions: response.data.sessions,
+        watch_time: response.data.watch_time,
         trend: response.data.trend,
       };
     }
@@ -803,8 +805,9 @@ onBeforeUnmount(cleanup);
         <div v-if="loading" class="panel vue-state"><LoaderCircle class="spin" :size="22" /><span>正在加载…</span></div>
 
         <template v-else-if="data">
-          <div class="cards"><div class="card"><div class="n">{{ data.summary.playing }}</div><div class="l">正在播放</div></div><div class="card"><div class="n">{{ data.summary.servers }}</div><div class="l">服务器</div></div><div class="card"><div class="n">{{ data.summary.users }}</div><div class="l">用户总数</div></div><div class="card"><div class="n">{{ data.summary.disabled }}</div><div class="l">已停用</div></div><div class="card"><div class="n">{{ data.summary.expiring }}</div><div class="l">即将到期</div></div></div>
+          <div class="cards"><div class="card"><div class="n">{{ data.summary.playing }}</div><div class="l">正在播放</div></div><div class="card"><div class="n">{{ data.summary.servers }}</div><div class="l">服务器</div></div><div class="card"><div class="n">{{ data.summary.users }}</div><div class="l">用户总数</div></div><div class="card"><div class="n">{{ data.summary.disabled }}</div><div class="l">已停用</div></div><div class="card"><div class="n">{{ data.summary.expiring }}</div><div class="l">即将到期</div></div><div class="card"><div class="n">{{ data.watch_time.hours }}h</div><div class="l">今日观看时长</div></div></div>
           <section class="panel"><div class="row" style="justify-content:space-between"><h2>正在播放</h2><span class="small muted">每 {{ data.poll_interval }} 秒自动刷新</span></div><div v-if="!data.sessions.length" class="empty">当前没有正在播放的会话。</div><table v-else><thead><tr><th>用户</th><th>内容</th><th>客户端</th><th>进度</th><th>操作</th></tr></thead><tbody><tr v-for="session in data.sessions" :key="`${session.server_id}:${session.session_id}`"><td>{{ session.username || '—' }}</td><td>{{ session.item_name || session.title || '—' }}</td><td>{{ session.client || session.device_name || '—' }}</td><td>{{ session.progress_percent ?? '—' }}{{ session.progress_percent != null ? '%' : '' }}</td><td><button class="danger sm" type="button" @click="stopSession(session)">停止</button></td></tr></tbody></table></section>
+          <section class="panel"><div class="row" style="justify-content:space-between"><h2>今日用户观看时长</h2><span class="small muted">{{ data.watch_time.date }} · {{ data.watch_time.hours }} 小时</span></div><div v-if="!data.watch_time.users.length" class="empty">今日暂无已完成的播放记录。</div><table v-else><thead><tr><th>用户</th><th>播放次数</th><th>观看时长</th></tr></thead><tbody><tr v-for="user in data.watch_time.users" :key="user.username"><td>{{ user.username || '—' }}</td><td>{{ user.plays }}</td><td>{{ user.hours }} 小时</td></tr></tbody></table></section>
           <section class="panel"><div class="row" style="justify-content:space-between"><h2>播放趋势</h2><span class="small muted">最近 7 天</span></div><div class="chart-bars" aria-label="最近 7 天播放次数"><div v-for="point in data.trend" :key="point.date" class="chart-bar" :title="`${point.date}：${point.plays} 次`"><i :style="{ height: `${(point.plays / maxPlays) * 100}%` }"></i><span>{{ point.date.slice(5) }}</span></div></div></section>
           <section class="panel"><h2>服务器状态</h2><div v-if="!data.servers.length" class="empty">还没有添加服务器。</div><table v-else><thead><tr><th>名称</th><th>地址</th><th>版本</th><th>状态</th><th>最近成功</th></tr></thead><tbody><tr v-for="server in data.servers" :key="server.id"><td>{{ server.name }}</td><td class="small muted">{{ server.base_url || '—' }}</td><td>{{ server.server_version || '—' }}</td><td><span class="badge" :class="server.status === 'ok' ? 'ok' : server.status === 'error' ? 'off' : ''">{{ server.status === 'ok' ? '正常' : server.status === 'error' ? '异常' : '已暂停' }}</span></td><td class="small muted">{{ formatDateTime(server.last_ok_at) }}</td></tr></tbody></table></section>
           <section class="panel"><h2>最近动作</h2><div v-if="!data.logs.length" class="empty">暂无记录</div><table v-else><tbody><tr v-for="log in data.logs" :key="`${log.created_at}:${log.action}`"><td class="small muted">{{ formatDateTime(log.created_at) }}</td><td>{{ ['user_policy_updated', 'emby_policy_updated', 'policy_updated'].includes(log.action) ? '播放策略' : log.action }}</td><td>{{ log.detail || '—' }}</td></tr></tbody></table></section>

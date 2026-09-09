@@ -14,12 +14,12 @@ _settings = get_settings()
 
 scheduler = AsyncIOScheduler(timezone=_settings.timezone)
 
-# Emby Webhook 维护的当前播放缓存，仪表盘直接读缓存
+# 后台主动轮询维护的当前播放缓存，仪表盘直接读缓存。
 live_cache: list[services.LiveSession] = []
 
 
 def update_live_session(entry: services.LiveSession) -> None:
-    """Merge a webhook session into the dashboard's in-memory cache."""
+    """兼容旧调用方，合并一个实时会话到缓存。"""
     global live_cache
     key = (entry.server_id, entry.session_id, entry.item_id)
     live_cache = [
@@ -35,7 +35,7 @@ def remove_live_session(
     session_id: str,
     item_id: str | None = None,
 ) -> None:
-    """Remove one session from the dashboard cache after a stop event."""
+    """兼容旧调用方，从仪表盘缓存移除一个会话。"""
     global live_cache
     live_cache = [
         item
@@ -46,6 +46,35 @@ def remove_live_session(
             and (item_id is None or item.item_id == item_id)
         )
     ]
+
+
+def replace_live_sessions(
+    sessions: list[services.LiveSession],
+    successful_server_ids: set[int],
+    enabled_server_ids: set[int],
+) -> None:
+    """只替换成功轮询服务器的缓存，保留失败服务器上一轮的结果。"""
+    global live_cache
+    live_cache = [
+        item
+        for item in live_cache
+        if item.server_id not in successful_server_ids
+        and item.server_id in enabled_server_ids
+    ]
+    live_cache.extend(sessions)
+
+
+async def _playback_job() -> None:
+    try:
+        async with SessionLocal() as db:
+            result = await services.poll_sessions_by_server(db)
+        replace_live_sessions(
+            result.live,
+            result.successful_server_ids,
+            result.enabled_server_ids,
+        )
+    except Exception:
+        logger.exception("正在播放轮询任务异常")
 
 
 async def _expiry_job() -> None:
@@ -125,6 +154,13 @@ def start() -> None:
         coalesce=True,
     )
     scheduler.add_job(
+        _playback_job,
+        IntervalTrigger(seconds=cfg.poll_interval_seconds),
+        id="poll_playback",
+        max_instances=1,
+        coalesce=True,
+    )
+    scheduler.add_job(
         _sync_job,
         IntervalTrigger(minutes=15),
         id="sync_users",
@@ -146,9 +182,10 @@ def start() -> None:
         coalesce=True,
     )
     scheduler.start()
-    # 启动后立即检查一次到期和生命周期；播放由 webhook 事件填充。
+    # 启动后立即检查一次到期、生命周期和当前播放。
     scheduler.add_job(_expiry_job, id="expiry_now", replace_existing=True)
     scheduler.add_job(_lifecycle_job, id="lifecycle_now", replace_existing=True)
+    scheduler.add_job(_playback_job, id="playback_now", replace_existing=True)
 
 
 def reschedule() -> None:
@@ -160,6 +197,7 @@ def reschedule() -> None:
         return
     cfg = settings_store.current()
     intervals = {
+        "poll_playback": IntervalTrigger(seconds=cfg.poll_interval_seconds),
         "process_expirations": IntervalTrigger(minutes=cfg.expiry_check_minutes),
         "account_lifecycle": IntervalTrigger(
             minutes=_lifecycle_interval(cfg.activation_grace_hours)

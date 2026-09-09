@@ -1,12 +1,16 @@
 """播放历史聚合查询。"""
 
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .config import get_settings
 from .models import PlaybackRecord, utcnow
+
+_settings = get_settings()
 
 
 @dataclass
@@ -116,6 +120,51 @@ async def totals(db: AsyncSession, days: int) -> dict[str, float | int]:
         )
     ).one()
     return {"plays": plays or 0, "hours": _hours(seconds), "users": users or 0}
+
+
+async def today_watch_time(db: AsyncSession) -> dict[str, object]:
+    """Return ended playback time for the current day in the app timezone."""
+    zone = ZoneInfo(_settings.timezone)
+    today = datetime.now(zone).date()
+    start = datetime.combine(today, time.min, tzinfo=zone).astimezone(timezone.utc)
+    end = datetime.combine(today + timedelta(days=1), time.min, tzinfo=zone).astimezone(
+        timezone.utc
+    )
+    filters = (
+        PlaybackRecord.started_at >= start,
+        PlaybackRecord.started_at < end,
+        PlaybackRecord.ended_at.is_not(None),
+    )
+    total_seconds = (
+        await db.scalar(
+            select(func.sum(PlaybackRecord.watched_seconds)).where(*filters)
+        )
+    ) or 0
+    rows = (
+        await db.execute(
+            select(
+                PlaybackRecord.username,
+                func.count(PlaybackRecord.id),
+                func.sum(PlaybackRecord.watched_seconds),
+            )
+            .where(*filters)
+            .group_by(PlaybackRecord.username)
+            .order_by(func.sum(PlaybackRecord.watched_seconds).desc())
+            .limit(15)
+        )
+    ).all()
+    return {
+        "date": today.isoformat(),
+        "hours": _hours(total_seconds),
+        "users": [
+            {
+                "username": name or "未知",
+                "plays": int(plays or 0),
+                "hours": _hours(seconds),
+            }
+            for name, plays, seconds in rows
+        ],
+    }
 
 
 async def daily_trend(db: AsyncSession, days: int = 14) -> list[dict[str, object]]:

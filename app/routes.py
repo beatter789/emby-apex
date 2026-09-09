@@ -243,6 +243,7 @@ async def _dashboard_snapshot(db: AsyncSession) -> dict[str, object]:
     return {
         "summary": summary,
         "sessions": [session.__dict__.copy() for session in scheduler.live_cache],
+        "watch_time": await stats.today_watch_time(db),
         "trend": await stats.daily_trend(db, 7),
         "servers": server_rows,
         "logs": log_rows,

@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import scheduler, services
+from . import services
 from .db import get_session
 from .logging_config import register_sensitive_values
 from .models import Server
@@ -130,28 +130,20 @@ async def emby_webhook(request: Request, db: DbSession) -> JSONResponse:
                 {"ok": False, "data": None, "error": "未找到匹配的 Emby 服务器"},
                 status_code=404,
             )
-        result = await services.process_webhook_event(db, server, payload)
-        for key in result.get("ended_keys") or []:
-            scheduler.remove_live_session(server.id, str(key[1]), str(key[2]))
-        session = result.get("session")
-        if session is not None:
-            scheduler.update_live_session(session)
-        # INFO 级别下可确认 Emby 测试/播放事件已经到达；只记录分类结果，
-        # 不记录 Webhook 请求体、用户输入或 token 查询参数。
+        # 播放状态统一由后台主动轮询获取。保留这个入口是为了兼容已经
+        # 配置在 Emby 里的 Webhook，但不让事件和轮询重复写入播放数据。
         logger.info(
-            "Emby Webhook 事件已处理 server=%s event=%s active=%s ended=%s",
+            "Emby Webhook 事件已接收，等待后台轮询 server=%s event=%s",
             server.name,
-            result.get("kind") or "ignored",
-            session is not None,
-            len(result.get("ended_keys") or []),
+            event_kind,
         )
         return JSONResponse(
             {
                 "ok": True,
                 "data": {
-                    "event": result.get("kind") or "ignored",
-                    "active": session is not None,
-                    "ended": len(result.get("ended_keys") or []),
+                    "event": event_kind,
+                    "active": False,
+                    "ended": 0,
                 },
                 "error": None,
             }

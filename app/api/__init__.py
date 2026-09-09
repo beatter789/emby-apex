@@ -59,6 +59,7 @@ def create_api_router(scope: str) -> APIRouter:
                 data = {
                     "summary": snapshot["summary"],
                     "sessions": snapshot["sessions"],
+                    "watch_time": snapshot["watch_time"],
                     "trend": snapshot["trend"],
                     "servers": snapshot["servers"],
                     "logs": snapshot["logs"],

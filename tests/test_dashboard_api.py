@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app import scheduler  # noqa: E402
 from app.db import SessionLocal, engine, init_db  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import ActionLog, Base, ManagedUser, Server, utcnow  # noqa: E402
+from app.models import ActionLog, Base, ManagedUser, PlaybackRecord, Server, utcnow  # noqa: E402
 
 
 @asynccontextmanager
@@ -79,12 +79,14 @@ class DashboardApiTests(unittest.TestCase):
         self.assertIsNone(body["error"])
         data = body["data"]
         self.assertEqual(
-            set(data), {"summary", "sessions", "trend", "servers", "logs", "poll_interval"}
+            set(data), {"summary", "sessions", "watch_time", "trend", "servers", "logs", "poll_interval"}
         )
         self.assertEqual(data["summary"], {"servers": 0, "users": 0, "disabled": 0, "expiring": 0, "playing": 0})
         self.assertEqual(data["sessions"], [])
         self.assertEqual(data["servers"], [])
         self.assertEqual(data["logs"], [])
+        self.assertEqual(data["watch_time"]["hours"], 0)
+        self.assertEqual(data["watch_time"]["users"], [])
         self.assertEqual(len(data["trend"]), 7)
         self.assertTrue(all(point["plays"] == 0 and point["hours"] == 0 for point in data["trend"]))
         self.assertIsInstance(data["poll_interval"], int)
@@ -114,6 +116,57 @@ class DashboardApiTests(unittest.TestCase):
         self.assertEqual(first_data["total"], 7)
         invalid = self.client.get("/api/v1/logs?level=trace")
         self.assertEqual(invalid.status_code, 400)
+
+    def test_dashboard_today_watch_time_excludes_open_and_old_records(self):
+        async def seed():
+            async with SessionLocal() as db:
+                server = Server(name="watch-server", base_url="http://watch", api_key_encrypted="x")
+                db.add(server)
+                await db.flush()
+                now = utcnow()
+                db.add_all(
+                    [
+                        PlaybackRecord(
+                            server_id=server.id,
+                            session_key="watch-ended",
+                            emby_user_id="u1",
+                            username="alice",
+                            watched_seconds=7200,
+                            started_at=now - timedelta(hours=1),
+                            last_seen_at=now - timedelta(minutes=5),
+                            ended_at=now - timedelta(minutes=5),
+                        ),
+                        PlaybackRecord(
+                            server_id=server.id,
+                            session_key="watch-open",
+                            emby_user_id="u2",
+                            username="bob",
+                            watched_seconds=3600,
+                            started_at=now - timedelta(minutes=30),
+                            last_seen_at=now,
+                            ended_at=None,
+                        ),
+                        PlaybackRecord(
+                            server_id=server.id,
+                            session_key="watch-old",
+                            emby_user_id="u3",
+                            username="carol",
+                            watched_seconds=1800,
+                            started_at=now - timedelta(days=2),
+                            last_seen_at=now - timedelta(days=2),
+                            ended_at=now - timedelta(days=2),
+                        ),
+                    ]
+                )
+                await db.commit()
+
+        asyncio.run(seed())
+        self._login()
+        response = self.client.get("/api/v1/dashboard")
+        self.assertEqual(response.status_code, 200)
+        watch_time = response.json()["data"]["watch_time"]
+        self.assertEqual(watch_time["hours"], 2.0)
+        self.assertEqual(watch_time["users"], [{"username": "alice", "plays": 1, "hours": 2.0}])
 
     def test_authenticated_payload_is_limited_and_redacted(self):
         async def seed():

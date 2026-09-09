@@ -1,4 +1,4 @@
-"""业务逻辑层：同步用户、Webhook 播放会话、强制客户端规则、到期处理。"""
+"""业务逻辑层：同步用户、主动轮询播放会话、强制客户端规则、到期处理。"""
 
 import fnmatch
 import asyncio
@@ -624,6 +624,15 @@ class LiveSession:
     blocked_reason: str | None = None
 
 
+@dataclass
+class SessionPollResult:
+    """主动轮询一次的结果及缓存更新所需的服务器状态。"""
+
+    live: list[LiveSession]
+    successful_server_ids: set[int]
+    enabled_server_ids: set[int]
+
+
 def _extract_sessions(server: Server, raw_sessions: list[dict[str, Any]]) -> list[LiveSession]:
     live: list[LiveSession] = []
     for session in raw_sessions:
@@ -881,10 +890,12 @@ async def _flush_playback_entries(
     return len(entries)
 
 
-async def poll_sessions(db: AsyncSession) -> list[LiveSession]:
-    """兼容旧的人工轮询入口；播放历史结束以 Webhook stop 为准。"""
+async def poll_sessions_by_server(db: AsyncSession) -> SessionPollResult:
+    """主动从每台启用的 Emby 获取会话并累计播放历史。"""
     live: list[LiveSession] = []
     servers = (await db.scalars(select(Server).where(Server.enabled.is_(True)))).all()
+    enabled_server_ids = {server.id for server in servers}
+    successful_server_ids: set[int] = set()
 
     async with _playback_lock:
         for server in servers:
@@ -896,6 +907,7 @@ async def poll_sessions(db: AsyncSession) -> list[LiveSession]:
                         server.last_ok_at = now
                     if server.last_error is not None:
                         server.last_error = None
+                    successful_server_ids.add(server.id)
 
                     playing = [s for s in raw_sessions if s.get("NowPlayingItem")]
                     seen_keys: set[tuple[int, str, str]] = set()
@@ -908,8 +920,8 @@ async def poll_sessions(db: AsyncSession) -> list[LiveSession]:
                             )
                         await _record_playback(db, server, session)
 
-                    # A successful compatibility poll with no longer-playing
-                    # sessions is an explicit end signal.
+                    # A successful poll with no longer-playing sessions is an
+                    # explicit end signal for this server.
                     ended_keys = [
                         key
                         for key in list(_playback_cache)
@@ -929,7 +941,16 @@ async def poll_sessions(db: AsyncSession) -> list[LiveSession]:
 
         if db.dirty or db.new or db.deleted:
             await db.commit()
-    return live
+    return SessionPollResult(
+        live=live,
+        successful_server_ids=successful_server_ids,
+        enabled_server_ids=enabled_server_ids,
+    )
+
+
+async def poll_sessions(db: AsyncSession) -> list[LiveSession]:
+    """兼容旧的人工轮询入口，只返回当前正在播放的会话。"""
+    return (await poll_sessions_by_server(db)).live
 
 
 async def process_webhook_event(
@@ -937,11 +958,10 @@ async def process_webhook_event(
     server: Server,
     payload: dict[str, Any],
 ) -> dict[str, Any]:
-    """Apply one Emby playback webhook to the existing in-memory aggregator.
+    """兼容旧的直接调用方，应用一个 Emby 播放事件到内存聚合器。
 
-    Playback starts/progresses never commit a database row.  A stop event (or
-    graceful process shutdown) is the durable boundary, preserving the
-    low-write playback behavior while making Emby the event source.
+    管理端 Webhook 入口不再调用此函数，生产环境以主动轮询为唯一播放来源。
+    播放开始/进度不会立即写入数据库，停止事件（或优雅退出）才是持久化边界。
     """
     kind = webhook_event_kind(payload)
     if kind == "ignored":

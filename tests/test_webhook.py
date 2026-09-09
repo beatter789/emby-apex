@@ -1,6 +1,8 @@
 import asyncio
+import json
 import unittest
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 from app import scheduler, services
 from app.main import app
@@ -23,6 +25,39 @@ class _PlaybackDb:
 
     async def commit(self):
         self.commits += 1
+
+
+class _ScalarRows:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def all(self):
+        return list(self._rows)
+
+
+class _PollDb(_PlaybackDb):
+    def __init__(self, server):
+        super().__init__()
+        self.server = server
+        self.dirty = []
+        self.deleted = []
+
+    async def scalars(self, _statement):
+        return _ScalarRows([self.server])
+
+
+class _FakeEmbyClient:
+    def __init__(self, sessions):
+        self.sessions = sessions
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_args):
+        return None
+
+    async def list_sessions(self):
+        return self.sessions.pop(0)
 
 
 class WebhookTests(unittest.IsolatedAsyncioTestCase):
@@ -104,6 +139,70 @@ class WebhookTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("事件已忽略", "\n".join(captured.output))
         self.assertNotIn("raw-secret", "\n".join(captured.output))
+
+    async def test_playback_event_is_acknowledged_without_processing(self):
+        body = b'{"Event":"PlaybackStart","Session":{"Id":"s1"}}'
+
+        async def receive():
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        request = Request(
+            {
+                "type": "http",
+                "http_version": "1.1",
+                "method": "POST",
+                "path": "/webhook",
+                "raw_path": b"/webhook",
+                "query_string": b"token=embyapex",
+                "headers": [],
+                "client": ("127.0.0.1", 1),
+                "server": ("test", 8000),
+                "scheme": "http",
+            },
+            receive,
+        )
+        server = Server(id=1, name="main", base_url="http://emby.local", api_key_encrypted="x")
+        with patch("app.webhook._resolve_server", new=AsyncMock(return_value=server)):
+            with patch("app.webhook.services.process_webhook_event", new=AsyncMock()) as process:
+                response = await emby_webhook(request, None)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(json.loads(response.body)["data"], {"event": "start", "active": False, "ended": 0})
+        process.assert_not_awaited()
+        self.assertEqual(scheduler.live_cache, [])
+
+    async def test_active_poll_ends_missing_sessions_and_flushes_history(self):
+        server = Server(
+            id=1,
+            name="main",
+            base_url="http://emby.local",
+            api_key_encrypted="x",
+            enabled=True,
+        )
+        session = {
+            "Id": "s1",
+            "UserId": "u1",
+            "UserName": "alice",
+            "Client": "Web",
+            "DeviceName": "Browser",
+            "NowPlayingItem": {
+                "Id": "m1",
+                "Name": "Movie",
+                "Type": "Movie",
+                "RunTimeTicks": 10000000,
+            },
+            "PlayState": {"PositionTicks": 0, "IsPaused": False},
+        }
+        db = _PollDb(server)
+        fake = _FakeEmbyClient([[session], []])
+        with patch("app.services.client_for", return_value=fake):
+            first = await services.poll_sessions_by_server(db)
+            second = await services.poll_sessions(db)
+        self.assertEqual(len(first.live), 1)
+        self.assertEqual(first.successful_server_ids, {1})
+        self.assertEqual(second, [])
+        self.assertEqual(len(db.rows), 1)
+        self.assertEqual(db.rows[0].username, "alice")
+        self.assertEqual(db.commits, 1)
 
     def test_event_classifier_and_payload_normalization(self):
         payload = {
