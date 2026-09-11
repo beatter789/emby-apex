@@ -187,6 +187,10 @@ async def create_request_api(request: Request, db: DbSession) -> JSONResponse:
         )
     except RegistrationError as exc:
         return _error(str(exc), status_code=400)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("MoviePilot 订阅提交失败")
+        return _error("MoviePilot 订阅提交失败，请检查配置和权限", status_code=400)
     return _ok(_media_request_json(item), status_code=201)
 
 

@@ -121,6 +121,8 @@
 .portal-request-workspace .portal-media-dialog-panel { width:min(1200px,100%); max-height:calc(100dvh - 24px); border-radius:16px; background:#0d0f14; }
 .portal-request-workspace .portal-detail-copy h3 { font-size:30px; }
 .portal-request-workspace .portal-request-submit { background:#f2b900; color:#18130a; border:0; min-width:130px; border-radius:8px; font-weight:700; }
+.mp-detail-actions{display:flex;justify-content:flex-end;margin:18px 0 4px}.mp-subscribe-action{display:inline-flex;align-items:center;gap:8px;padding:11px 24px;border:0;border-radius:8px;background:#e7ae00;color:#18130a;font-size:15px;font-weight:700;cursor:pointer}.mp-subscribe-action:disabled{opacity:.5;cursor:not-allowed}
+.portal-request-form .portal-request-submit{display:none}
 .portal-poster-card { display: flex; min-width: 0; flex-direction: column; padding: 0; overflow: hidden; cursor: pointer; transition: border-color .16s ease, background .16s ease, transform .16s ease; }
 .portal-poster-card:hover, .portal-poster-card:focus-visible { border-color: rgba(124, 92, 255, .62); background: var(--surface-hover); }
 .portal-poster-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

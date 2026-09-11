@@ -107,8 +107,14 @@ class MoviePilotClient:
         return data.get("item") is not None
 
     async def subscribe(self, *, name: str, media_type: str, media_source: str, media_id: str, year: int | None = None, season: int | None = None) -> int:
-        payload = {"name": name, "type": media_type, "year": str(year or ""), "media_source": media_source, "media_id": media_id, "season": season}
-        data = await self._request("POST", "subscribe/", json=payload)
+        payload = {"name": name, "type": media_type, "year": str(year or ""), "media_source": media_source, "media_id": media_id}
+        if season is not None: payload["season"] = season
+        try:
+            data = await self._request("POST", "subscribe/", json=payload)
+        except MoviePilotError as exc:
+            # V3 accepts the subscription object as form data on some builds.
+            if "422" not in str(exc) and "400" not in str(exc): raise
+            data = await self._request("POST", "subscribe/", data={k: str(v) for k, v in payload.items()})
         value = data.get("id") if isinstance(data, dict) else data
         try: return int(value)
         except (TypeError, ValueError) as exc: raise MoviePilotError("MoviePilot 订阅响应无效") from exc

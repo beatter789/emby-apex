@@ -2661,7 +2661,10 @@ def _normalize_mp(item: dict[str, Any]) -> dict[str, Any] | None:
     except (TypeError, ValueError): seasons = None
     try: episodes = int(episodes) if episodes is not None else None
     except (TypeError, ValueError): episodes = None
-    return {"media_source": source, "media_id": mid, "tmdb_id": int(mid) if source in {"tmdb", "themoviedb"} and mid.isdigit() else 0, "media_type": media_type, "title": title, "original_title": str(item.get("original_title") or item.get("original_name") or title), "year": year, "overview": str(item.get("overview") or ""), "poster_url": str(poster), "backdrop_url": str(item.get("backdrop_url") or item.get("backdrop_path") or "") or None, "rating": item.get("vote_average") or item.get("rating"), "status": item.get("status"), "seasons": seasons, "episodes": episodes, "genres": item.get("genres") if isinstance(item.get("genres"), list) else []}
+    backdrop = str(item.get("backdrop_url") or item.get("backdrop_path") or "").strip()
+    if backdrop.startswith("/"):
+        backdrop = str(settings_store.current().moviepilot_url or "").rstrip("/") + backdrop
+    return {"media_source": source, "media_id": mid, "tmdb_id": int(mid) if source in {"tmdb", "themoviedb"} and mid.isdigit() else 0, "media_type": media_type, "title": title, "original_title": str(item.get("original_title") or item.get("original_name") or title), "year": year, "overview": str(item.get("overview") or ""), "poster_url": str(poster), "backdrop_url": backdrop or None, "rating": item.get("vote_average") or item.get("rating"), "status": item.get("status"), "seasons": seasons, "episodes": episodes, "genres": item.get("genres") if isinstance(item.get("genres"), list) else []}
 
 async def search_moviepilot(query: str, media_type: str | None = None) -> list[dict[str, Any]]:
     try:
@@ -2691,7 +2694,7 @@ async def moviepilot_details(media_source: str, media_id: str, media_type: str |
     try:
         async with MoviePilotClient() as client: row = await client.detail(media_source, media_id, _mp_type(media_type) if media_type in MEDIA_TYPES else None)
     except MoviePilotError as exc: raise RegistrationError(str(exc)) from exc
-    result = _normalize_mp(row) or {"media_source": media_source, "media_id": media_id, "media_type": media_type or "movie", "title": media_id}
+    result = _normalize_mp(row) or {"media_source": media_source, "media_id": media_id, "tmdb_id": int(media_id) if str(media_id).isdigit() else 0, "media_type": media_type or "movie", "title": media_id}
     try:
         async with MoviePilotClient() as client:
             value = await client.exists(mtype=_mp_type(result["media_type"]), media_source=media_source, media_id=media_id, title=result.get("title", ""), year=result.get("year"))
@@ -2830,7 +2833,7 @@ async def create_media_request(
     request_row = MediaRequest(
         server_id=user.server_id,
         managed_user_id=user.id,
-        tmdb_id=detail["tmdb_id"],
+        tmdb_id=int(detail.get("tmdb_id") or (tmdb_id if tmdb_id > 0 else 0)),
         media_type=detail["media_type"],
         title=detail.get("title") or detail.get("original_title") or f"TMDB {tmdb_id}",
         original_title=detail.get("original_title") or detail.get("title") or "",
