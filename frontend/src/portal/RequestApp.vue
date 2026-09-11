@@ -68,6 +68,8 @@ export type MediaItem = {
   backdrop_url?: string | null;
   library_state?: string;
   moviepilot_subscribe_state?: string;
+  season_info?: Array<{ season_number?: number; name?: string; episode_count?: number; overview?: string; air_date?: string; poster_path?: string }>;
+  episodes_info?: Record<string, Array<{ episode_number?: number; name?: string; overview?: string; air_date?: string }>> | Array<Record<string, any>>;
 };
 
 export type RequestLists = {
@@ -145,6 +147,39 @@ const detailDialog = ref<HTMLDialogElement | null>(null);
 const logoutBusy = ref(false);
 const selectedSeasons = ref<number[]>([]);
 const expandedSeasons = ref<number[]>([]);
+
+type SeasonEntry = { number: number; episodes: Array<Record<string, any>>; count: number; state?: string };
+const seasonEntries = computed<SeasonEntry[]>(() => {
+  const item = selected.value;
+  if (!item || item.media_type !== 'tv') return [];
+  const out: SeasonEntry[] = [];
+  const info = item.season_info;
+  if (Array.isArray(info)) {
+    info.forEach((s: any, i) => {
+      const n = Number(s?.season_number ?? s?.number ?? i + 1);
+      if (Number.isFinite(n)) out.push({ number: n, episodes: [], count: Number(s?.episode_count || 0), state: s?.status || s?.state });
+    });
+  }
+  const eps = item.episodes_info;
+  if (eps && typeof eps === 'object') {
+    Object.entries(eps).forEach(([key, list]) => {
+      const n = Number(key); if (!Number.isFinite(n)) return;
+      const found = out.find(s => s.number === n);
+      const episodes = Array.isArray(list) ? (list as any[]).map(ep => (ep && typeof ep === 'object' ? ep : { episode_number: ep })) : [];
+      if (found) { found.episodes = episodes; found.count = found.count || episodes.length; }
+      else out.push({ number: n, episodes, count: episodes.length });
+    });
+  }
+  if (!out.length && item.seasons) {
+    for (let n = 1; n <= item.seasons; n += 1) out.push({ number: n, episodes: [], count: n === 1 ? Number(item.episodes || 0) : 0 });
+  }
+  return out.sort((a, b) => a.number - b.number);
+});
+function episodeLabel(ep: Record<string, any>, index: number): string {
+  const n = Number(ep.episode_number ?? ep.number ?? index + 1);
+  const title = ep.name || ep.title || '';
+  return `E${String(Number.isFinite(n) ? n : index + 1).padStart(2, '0')}${title ? ` · ${title}` : ''}`;
+}
 
 const isIdMode = computed(() => mode.value === 'movie_id' || mode.value === 'tv_id');
 const pending = computed(() => lists.value.pending);
@@ -311,7 +346,7 @@ async function select(item: MediaItem): Promise<void> {
   detailLoginExpired.value = false;
   selected.value = { ...item };
   history.pushState(null, '', `#media=${encodeURIComponent(item.media_source || 'themoviedb')}:${encodeURIComponent(item.media_id || String(item.tmdb_id))}`);
-  selectedSeasons.value = item.media_type === 'tv' && item.seasons ? Array.from({ length: item.seasons }, (_, i) => i + 1) : [];
+  selectedSeasons.value = item.media_type === 'tv' ? seasonEntries.value.map(s => s.number) : [];
   expandedSeasons.value = [];
   note.value = item.note || '';
   openDetailDialog();
@@ -321,9 +356,7 @@ async function select(item: MediaItem): Promise<void> {
     const response = await getApi<MediaItem>(`/requests/tmdb/${encodeURIComponent(item.media_type)}/${encodeURIComponent(String(item.media_id || item.tmdb_id))}?media_source=${encodeURIComponent(item.media_source || 'themoviedb')}`);
     const merged = { ...item, ...(response.data || {}) };
     selected.value = merged;
-    if (merged.media_type === 'tv' && merged.seasons && !selectedSeasons.value.length) {
-      selectedSeasons.value = Array.from({ length: merged.seasons }, (_, i) => i + 1);
-    }
+    if (merged.media_type === 'tv' && !selectedSeasons.value.length) selectedSeasons.value = seasonEntries.value.map(s => s.number);
   } catch (error) {
     detailError.value = detailErrorMessage(error, '作品详情加载失败，请稍后重试。');
   } finally {
@@ -357,6 +390,35 @@ function toggleSeason(season: number): void {
   expandedSeasons.value = expandedSeasons.value.includes(season)
     ? expandedSeasons.value.filter((value) => value !== season)
     : [...expandedSeasons.value, season];
+}
+
+function seasonRows(item: MediaItem): Array<{ number: number; name: string; episodeCount: number; overview?: string; airDate?: string }> {
+  const rawInfo: any = item.season_info;
+  const source = Array.isArray(rawInfo) ? rawInfo : rawInfo && typeof rawInfo === 'object' ? Object.entries(rawInfo).map(([k, v]: any) => ({ season_number: v?.season_number ?? k, ...v })) : [];
+  const rows = source.map((s: any) => ({
+    number: Number(s.season_number ?? 0),
+    name: s.name || `第 ${Number(s.season_number ?? 0)} 季`,
+    episodeCount: Number(s.episode_count || 0),
+    overview: s.overview,
+    airDate: s.air_date,
+  })).filter((s) => Number.isFinite(s.number));
+  if (rows.length) return rows.sort((a, b) => a.number - b.number);
+  const count = Number(item.seasons || 0);
+  return Array.from({ length: count }, (_, i) => ({ number: i + 1, name: `第 ${i + 1} 季`, episodeCount: i === 0 ? Number(item.episodes || 0) : 0 }));
+}
+
+function episodeRows(item: MediaItem, season: number, count: number) {
+  const info: any = item.episodes_info;
+  const actual = Array.isArray(info)
+    ? info.filter((ep: any) => Number(ep?.season_number ?? ep?.season ?? 1) === season)
+    : info?.[String(season)] || [];
+  if (actual.length) return actual;
+  return Array.from({ length: Math.min(count || 0, 60) }, (_, i) => ({ episode_number: i + 1, name: `第 ${i + 1} 集` }));
+}
+
+function seasonLabel(item: MediaItem): string {
+  const values = Array.isArray((item as any).season_numbers) ? (item as any).season_numbers : [];
+  return values.map((s: unknown) => `第 ${s} 季`).join('、');
 }
 
 async function submitRequest(): Promise<void> {
@@ -501,9 +563,9 @@ onBeforeUnmount(() => {
           <div class="vue-section-heading"><div><h2>{{ listTitle }}</h2><p class="hint">仅显示当前账户可见的求片记录。</p></div><button class="secondary sm" type="button" :disabled="listsLoading" @click="loadLists"><LoaderCircle v-if="listsLoading" class="spin" :size="15" /><RefreshCw v-else :size="15" />刷新</button></div>
           <div v-if="listsLoading && !activeList.length" class="vue-state compact" role="status"><LoaderCircle class="spin" :size="21" /><span>正在加载列表…</span></div>
           <div v-else-if="!activeList.length" class="vue-state compact"><Film :size="24" /><span>{{ listEmpty }}</span></div>
-          <div v-else class="request-list">
+          <div v-else class="request-list mp-subscribe-grid">
             <article v-for="item in activeList" :key="item.id || recordKey(item)" class="request-item portal-request-item" role="button" tabindex="0" @click="select(item)" @keydown.enter.prevent="select(item)">
-              <img class="poster" :src="poster(item)" :alt="item.title" loading="lazy"><div><div class="request-item-title"><h3>{{ item.title }}</h3><span :class="['badge', statusClass(itemRequestState(item))]">{{ statusLabel(itemRequestState(item)) }}</span></div><p class="meta">{{ mediaLabel(item) }} · {{ item.year || '年份未知' }} · TMDB {{ item.tmdb_id }} · {{ formatDateTime(item.created_at) }}</p><p>{{ item.overview || '暂无简介' }}</p><p v-if="item.note" class="hint">备注：{{ item.note }}</p><p v-if="tab === 'rejected' && item.rejection_reason" class="hint">拒绝原因：{{ item.rejection_reason }}</p><a v-if="tab === 'rejected'" class="button-link" :href="`/requests?tab=search&mode=${item.media_type}&query=${encodeURIComponent(item.title)}`" @click.stop>重新搜索</a></div>
+              <div class="subscribe-card-image"><img class="poster" :src="poster(item)" :alt="item.title" loading="lazy"><span class="mp-type-chip">{{ mediaLabel(item) }}</span></div><div class="subscribe-card-content"><h3>{{ item.title || '未命名媒体' }}</h3><p class="subscribe-card-meta">{{ item.year || '年份未知' }}<span v-if="item.media_type === 'tv' && seasonLabel(item)"> · {{ seasonLabel(item) }}</span></p><span :class="['subscribe-state-pill', statusClass(itemRequestState(item))]">{{ item.moviepilot_subscribe_state === 'S' ? '已暂停' : statusLabel(itemRequestState(item)) || '已提交' }}</span><p v-if="item.note" class="hint">{{ item.note }}</p><p v-if="tab === 'rejected' && item.rejection_reason" class="hint">{{ item.rejection_reason }}</p><a v-if="tab === 'rejected'" class="button-link" :href="`/requests?tab=search&mode=${item.media_type}&query=${encodeURIComponent(item.title)}`" @click.stop>重新搜索</a></div>
             </article>
           </div>
         </section>
@@ -525,7 +587,7 @@ onBeforeUnmount(() => {
             <dl class="portal-detail-facts"><div><dt><CalendarDays :size="14" />发行日期</dt><dd>{{ formatReleaseDate(selected) }}</dd></div><div><dt><Star :size="14" />评分</dt><dd>{{ formatRating(selected.rating) }}</dd></div><div><dt><Clock3 :size="14" />时长</dt><dd>{{ formatRuntime(selected.runtime_minutes) }}</dd></div><div><dt><Film :size="14" />状态</dt><dd>{{ selected.status || '—' }}</dd></div><div v-if="selected.media_type === 'tv'"><dt><Tv :size="14" />季 / 集</dt><dd>{{ selected.seasons ?? '—' }} 季 · {{ selected.episodes ?? '—' }} 集</dd></div><div><dt><UserRound :size="14" />TMDB ID</dt><dd>{{ selected.tmdb_id }}</dd></div></dl>
             <section v-if="selected.directors?.length" class="portal-credit-section"><h3><UserRound :size="16" />导演</h3><div class="portal-director-list"><span v-for="person in (selected.directors || []).slice(0, 5)" :key="person.id || person.name">{{ person.name }}</span></div></section>
             <section v-if="selected.cast?.length" class="portal-credit-section"><h3><Users :size="16" />演员</h3><div class="portal-cast-grid"><div v-for="person in (selected.cast || []).slice(0, 12)" :key="person.id || person.name" class="portal-cast-person"><img :src="profileImage(person)" :alt="person.name" loading="lazy"><div><strong>{{ person.name }}</strong><span>{{ person.character || '角色未知' }}</span></div></div></div></section>
-            <form class="portal-request-form" @submit.prevent="submitRequest"><div v-if="selected.media_type === 'tv' && selected.seasons" class="season-picker"><strong>季</strong><div class="season-grid"><div v-for="season in selected.seasons" :key="season" class="season-row"><label><input v-model="selectedSeasons" type="checkbox" :value="season" :disabled="!selectedCanSubmit"> 第 {{ season }} 季</label><button type="button" class="icon-button" @click="toggleSeason(season)">{{ expandedSeasons.includes(season) ? '⌃' : '⌄' }}</button><div v-if="expandedSeasons.includes(season)" class="episode-list"><span v-for="episode in Math.min(selected.episodes || 0, 30)" :key="episode">E{{ String(episode).padStart(2, '0') }}</span><small v-if="!selected.episodes">暂无集信息</small></div></div></div></div><label><span>求片备注（可选）</span><textarea v-model="note" maxlength="1000" placeholder="例如：希望优先添加国语版" :disabled="!selectedCanSubmit"></textarea></label><p v-if="selectedState === 'pending'" class="hint">该作品已提交求片，等待管理员处理。</p><p v-else-if="selectedState === 'library'" class="hint">该作品已入库，无需重复提交。</p><button class="primary portal-request-submit" type="submit" :disabled="!selectedCanSubmit"><LoaderCircle v-if="submitting" class="spin" :size="17" /><Send v-else :size="17" />{{ submitting ? '提交中' : '订阅' }}</button></form>
+            <form class="portal-request-form" @submit.prevent="submitRequest"><section v-if="selected.media_type === 'tv' && seasonRows(selected).length" class="season-picker mp-season-picker"><h3>季</h3><div class="season-list"><article v-for="season in seasonRows(selected)" :key="season.number" class="season-card"><div class="season-card-main"><input v-model="selectedSeasons" type="checkbox" :value="season.number" :disabled="!selectedCanSubmit"><div class="season-poster-placeholder">S{{ season.number }}</div><div class="season-card-copy"><strong>{{ season.name }}</strong><span class="season-episode-count">{{ season.episodeCount || 0 }} 集<span v-if="season.airDate"> · {{ season.airDate }}</span></span></div><span :class="['season-state-pill', itemRequestState(selected) === 'library' ? 'ok' : itemRequestState(selected) === 'pending' ? 'pending' : 'missing']">{{ itemRequestState(selected) === 'library' ? '已入库' : itemRequestState(selected) === 'pending' ? '已提交' : '缺失' }}</span><span class="season-heart" aria-hidden="true">♡</span><button type="button" class="season-expand" :aria-label="expandedSeasons.includes(season.number) ? '收起' : '展开'" @click="toggleSeason(season.number)">{{ expandedSeasons.includes(season.number) ? '⌃' : '⌄' }}</button></div><p v-if="expandedSeasons.includes(season.number) && season.overview" class="season-overview">{{ season.overview }}</p><div v-if="expandedSeasons.includes(season.number)" class="episode-list"><div v-for="episode in episodeRows(selected, season.number, season.episodeCount)" :key="episode.episode_number"><b>E{{ String(episode.episode_number || 0).padStart(2, '0') }}</b><span>{{ episode.name || '未命名集' }}</span><time v-if="episode.air_date">{{ episode.air_date }}</time></div><small v-if="!season.episodeCount">暂无集信息</small></div></article></div></section><label><span>求片备注（可选）</span><textarea v-model="note" maxlength="1000" placeholder="例如：希望优先添加国语版" :disabled="!selectedCanSubmit"></textarea></label><p v-if="selectedState === 'pending'" class="hint">该作品已提交求片，等待管理员处理。</p><p v-else-if="selectedState === 'library'" class="hint">该作品已入库，无需重复提交。</p><button class="primary portal-request-submit" type="submit" :disabled="!selectedCanSubmit"><LoaderCircle v-if="submitting" class="spin" :size="17" /><Send v-else :size="17" />{{ submitting ? '提交中' : '订阅' }}</button></form>
           </template>
         </div>
       </dialog>

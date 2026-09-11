@@ -2646,7 +2646,7 @@ def _normalize_mp(item: dict[str, Any]) -> dict[str, Any] | None:
     mid = str(item.get("media_id") or item.get("id") or "").strip()
     title = str(item.get("title") or item.get("name") or item.get("original_title") or "").strip()
     if not mid or not title: return None
-    typ = str(item.get("type") or item.get("media_type") or "").lower()
+    typ = str(item.get("type") or item.get("type_name") or item.get("media_type") or "").lower()
     media_type = "tv" if typ in {"tv", "电视剧", "series"} else "movie"
     year = item.get("year") or item.get("release_date") or item.get("first_air_date")
     try: year = int(str(year)[:4]) if year else None
