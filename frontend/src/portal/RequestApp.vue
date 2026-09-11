@@ -485,7 +485,7 @@ onBeforeUnmount(() => {
           <div class="vue-section-heading"><h2>搜索结果</h2><span class="muted small">{{ results.length }} 个结果</span></div>
           <div class="result-grid portal-poster-grid">
             <article v-for="item in results" :key="recordKey(item)" class="result-card vue-result-card portal-poster-card" role="button" tabindex="0" @click="select(item)" @keydown.enter.prevent="select(item)">
-              <img class="poster" :src="poster(item)" :alt="item.title" loading="lazy"><div class="media-hover-overview">{{ item.overview || '暂无简介' }}</div>
+              <img class="poster" :src="poster(item)" :alt="item.title" loading="lazy"><span class="mp-type-chip">{{ mediaLabel(item) }}</span><span v-if="item.rating" class="mp-rating-chip">{{ Number(item.rating).toFixed(1) }}</span><div class="media-hover-overview">{{ item.overview || '暂无简介' }}</div>
               <div class="result-body"><div class="result-card-title"><h3>{{ item.title }}</h3><span v-if="itemRequestState(item)" :class="['badge', statusClass(itemRequestState(item))]">{{ statusLabel(itemRequestState(item)) }}</span><span v-else-if="libraryStateLabel(item)" class="badge off">{{ libraryStateLabel(item) }}</span></div><p class="meta"><component :is="item.media_type === 'movie' ? Film : Tv" :size="13" />{{ mediaLabel(item) }} · {{ item.year || '年份未知' }}<template v-if="item.media_type === 'tv' && item.seasons"> · {{ item.seasons }} 季<span v-if="item.episodes"> · {{ item.episodes }} 集</span></template></p><p class="overview">{{ item.overview || '暂无简介' }}</p><button type="button" class="secondary" @click.stop="select(item)"><Search :size="15" />查看详情</button></div>
             </article>
           </div>
