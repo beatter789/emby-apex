@@ -101,6 +101,13 @@ class MoviePilotClient:
                     if attempt == 0: continue
                 response.raise_for_status()
                 return _unwrap(response.json())
+            except MoviePilotError as exc:
+                # Business-level ``success=false`` responses are HTTP 200 and
+                # therefore bypass the status-error branch above.  Sanitize
+                # their message as well before exposing it to Apex callers.
+                raise MoviePilotError(
+                    _safe_message(str(exc), self.password, self._token)
+                ) from exc
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code == 401:
                     raise MoviePilotError("MoviePilot 登录已失效") from exc
