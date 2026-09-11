@@ -2664,7 +2664,13 @@ def _normalize_mp(item: dict[str, Any]) -> dict[str, Any] | None:
     backdrop = str(item.get("backdrop_url") or item.get("backdrop_path") or "").strip()
     if backdrop.startswith("/"):
         backdrop = str(settings_store.current().moviepilot_url or "").rstrip("/") + backdrop
-    return {"media_source": source, "media_id": mid, "tmdb_id": int(mid) if source in {"tmdb", "themoviedb"} and mid.isdigit() else 0, "media_type": media_type, "title": title, "original_title": str(item.get("original_title") or item.get("original_name") or title), "year": year, "overview": str(item.get("overview") or ""), "poster_url": str(poster), "backdrop_url": backdrop or None, "rating": item.get("vote_average") or item.get("rating"), "status": item.get("status"), "seasons": seasons, "episodes": episodes, "genres": item.get("genres") if isinstance(item.get("genres"), list) else []}
+    season_info = item.get("season_info") or item.get("seasons_info") or item.get("seasons_detail") or []
+    if not isinstance(season_info, list): season_info = []
+    episodes_info = item.get("episodes_info") or item.get("episode_info") or {}
+    if not isinstance(episodes_info, dict): episodes_info = {}
+    directors = item.get("directors") or item.get("crew") or []
+    cast = item.get("cast") or item.get("actors") or item.get("credits") or []
+    return {"media_source": source, "media_id": mid, "tmdb_id": int(mid) if source in {"tmdb", "themoviedb"} and mid.isdigit() else 0, "media_type": media_type, "title": title, "original_title": str(item.get("original_title") or item.get("original_name") or title), "year": year, "overview": str(item.get("overview") or ""), "poster_url": str(poster), "backdrop_url": backdrop or None, "rating": item.get("vote_average") or item.get("rating"), "status": item.get("status"), "seasons": seasons, "episodes": episodes, "genres": item.get("genres") if isinstance(item.get("genres"), list) else [], "season_info": season_info, "episodes_info": episodes_info, "directors": directors if isinstance(directors, list) else [], "cast": cast if isinstance(cast, list) else []}
 
 async def search_moviepilot(query: str, media_type: str | None = None) -> list[dict[str, Any]]:
     try:
@@ -2782,6 +2788,11 @@ async def create_media_request(
     media_id: str = "",
     seasons: list[int] | None = None,
 ) -> MediaRequest:
+    # MoviePilot V3 uses ``themoviedb`` as the provider identifier.  Accept
+    # legacy Apex ``tmdb`` values from older clients while persisting one
+    # stable identity for duplicate detection and status refreshes.
+    if moviepilot_enabled() and str(media_source).strip().lower() == "tmdb":
+        media_source = "themoviedb"
     if media_type not in MEDIA_TYPES or (tmdb_id <= 0 and not moviepilot_enabled()):
         raise RegistrationError("作品信息无效")
     note = note.strip()

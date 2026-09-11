@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio, time
 from typing import Any
+from urllib.parse import quote
 import httpx
 
 from . import settings_store
@@ -11,6 +12,18 @@ from .logging_config import register_sensitive_values
 
 class MoviePilotError(RuntimeError):
     pass
+
+
+def _source(value: str | None) -> str:
+    """Return the canonical MoviePilot media provider name.
+
+    Older Apex payloads used ``tmdb`` while MoviePilot V3 identifies the
+    provider as ``themoviedb``.  Normalising at the client boundary keeps all
+    endpoint calls consistent and avoids otherwise opaque 422 responses.
+    """
+
+    normalized = str(value or "").strip().lower()
+    return "themoviedb" if normalized in {"tmdb", "themoviedb"} else normalized
 
 _TOKEN_CACHE: dict[tuple[str, str], tuple[str, float]] = {}
 
@@ -78,8 +91,32 @@ class MoviePilotClient:
                 response.raise_for_status()
                 return _unwrap(response.json())
             except httpx.HTTPStatusError as exc:
-                if exc.response.status_code == 401: raise MoviePilotError("MoviePilot 登录已失效") from exc
-                raise MoviePilotError(f"MoviePilot 请求失败（HTTP {exc.response.status_code}）") from exc
+                if exc.response.status_code == 401:
+                    raise MoviePilotError("MoviePilot 登录已失效") from exc
+                # FastAPI validation errors and V3 business failures include
+                # useful diagnostics in the response body.  Preserve only a
+                # short, textual message; never include request headers,
+                # credentials, or the raw response in the exception.
+                message = ""
+                try:
+                    body = exc.response.json()
+                    if isinstance(body, dict):
+                        message = str(body.get("message") or body.get("detail") or "")
+                        if isinstance(body.get("detail"), list):
+                            message = "; ".join(
+                                str(item.get("msg") or item)
+                                for item in body["detail"][:3]
+                                if isinstance(item, dict)
+                            )
+                    elif isinstance(body, str):
+                        message = body
+                except (ValueError, TypeError):
+                    message = ""
+                message = " ".join(message.split())[:300]
+                suffix = f": {message}" if message else ""
+                raise MoviePilotError(
+                    f"MoviePilot 请求失败（HTTP {exc.response.status_code}）{suffix}"
+                ) from exc
             except (httpx.HTTPError, ValueError) as exc:
                 raise MoviePilotError("MoviePilot 网络请求失败") from exc
         raise MoviePilotError("MoviePilot 登录已失效")
@@ -96,25 +133,43 @@ class MoviePilotClient:
         return []
 
     async def detail(self, media_source: str, media_id: str, media_type: str | None = None) -> dict[str, Any]:
-        data = await self._request("GET", f"media/{media_id}", params={"media_source": media_source, "type_name": media_type or ""})
+        source = _source(media_source)
+        data = await self._request(
+            "GET",
+            f"media/{quote(str(media_id), safe='')}",
+            params={"media_source": source, "type_name": media_type or ""},
+        )
         return data if isinstance(data, dict) else {}
 
     async def exists(self, *, mtype: str, media_source: str, media_id: str, season: int | None = None, title: str = "", year: int | None = None) -> bool | None:
-        params = {"mtype": mtype, "media_source": media_source, "media_id": media_id, "title": title, "year": year or ""}
+        params = {"mtype": mtype, "media_source": _source(media_source), "media_id": media_id, "title": title, "year": year or ""}
         if season is not None: params["season"] = season
         data = await self._request("GET", "mediaserver/exists", params=params)
         if not isinstance(data, dict) or "item" not in data: return None
         return data.get("item") is not None
 
     async def subscribe(self, *, name: str, media_type: str, media_source: str, media_id: str, year: int | None = None, season: int | None = None) -> int:
-        payload = {"name": name, "type": media_type, "year": str(year or ""), "media_source": media_source, "media_id": media_id}
-        if season is not None: payload["season"] = season
+        # ``season`` is optional in V3 but sending an explicit null for movies
+        # matches the native frontend request model and avoids strict schema
+        # variants treating the field as missing.
+        payload = {
+            "name": name,
+            "type": media_type,
+            "year": str(year or ""),
+            "media_source": _source(media_source),
+            "media_id": str(media_id),
+            "season": season,
+        }
         try:
             data = await self._request("POST", "subscribe/", json=payload)
         except MoviePilotError as exc:
             # V3 accepts the subscription object as form data on some builds.
             if "422" not in str(exc) and "400" not in str(exc): raise
-            data = await self._request("POST", "subscribe/", data={k: str(v) for k, v in payload.items()})
+            data = await self._request(
+                "POST",
+                "subscribe/",
+                data={k: "" if v is None else str(v) for k, v in payload.items()},
+            )
         value = data.get("id") if isinstance(data, dict) else data
         try: return int(value)
         except (TypeError, ValueError) as exc: raise MoviePilotError("MoviePilot 订阅响应无效") from exc

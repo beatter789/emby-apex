@@ -118,7 +118,7 @@ async def request_tmdb_details_api(
     media_type: str,
     tmdb_id: str,
     db: DbSession,
-    media_source: str = "tmdb",
+    media_source: str = "themoviedb",
 ) -> JSONResponse:
     user = await _portal_api_user(request, db)
     if user is None:
