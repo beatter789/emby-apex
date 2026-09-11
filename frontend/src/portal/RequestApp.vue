@@ -43,6 +43,8 @@ export type CreditPerson = {
 export type MediaItem = {
   id?: number;
   tmdb_id: number;
+  media_source?: string;
+  media_id?: string;
   media_type: MediaType;
   title: string;
   original_title?: string | null;
@@ -64,6 +66,8 @@ export type MediaItem = {
   seasons?: number | null;
   episodes?: number | null;
   backdrop_url?: string | null;
+  library_state?: string;
+  moviepilot_subscribe_state?: string;
 };
 
 export type RequestLists = {
@@ -139,6 +143,7 @@ const listsRequestSucceeded = ref(false);
 const detailVisible = ref(false);
 const detailDialog = ref<HTMLDialogElement | null>(null);
 const logoutBusy = ref(false);
+const selectedSeasons = ref<number[]>([]);
 
 const isIdMode = computed(() => mode.value === 'movie_id' || mode.value === 'tv_id');
 const pending = computed(() => lists.value.pending);
@@ -160,8 +165,8 @@ const requestStateByKey = computed(() => {
 const selectedState = computed(() => selected.value ? itemRequestState(selected.value) : '');
 const selectedCanSubmit = computed(() => Boolean(selected.value && !detailLoading.value && !detailError.value && !detailLoginExpired.value && !submitting.value && online.value && selectedState.value !== 'pending' && selectedState.value !== 'library'));
 
-function recordKey(item: Pick<MediaItem, 'media_type' | 'tmdb_id'>): string {
-  return `${item.media_type}:${item.tmdb_id}`;
+function recordKey(item: Pick<MediaItem, 'media_type' | 'tmdb_id'> & Partial<MediaItem>): string {
+  return `${item.media_type}:${item.media_source || 'tmdb'}:${item.media_id || item.tmdb_id}`;
 }
 
 function itemRequestState(item: MediaItem): 'pending' | 'library' | 'rejected' | '' {
@@ -170,6 +175,7 @@ function itemRequestState(item: MediaItem): 'pending' | 'library' | 'rejected' |
   if (item.status === 'pending') return 'pending';
   if (item.status === 'in_library') return 'library';
   if (item.status === 'rejected') return 'rejected';
+  if (item.library_state === 'in_library') return 'library';
   return '';
 }
 
@@ -291,6 +297,7 @@ async function select(item: MediaItem): Promise<void> {
   detailNotice.value = '';
   detailLoginExpired.value = false;
   selected.value = { ...item };
+  selectedSeasons.value = item.media_type === 'tv' && item.seasons ? Array.from({ length: item.seasons }, (_, i) => i + 1) : [];
   note.value = item.note || '';
   openDetailDialog();
   if (hasCompleteDetails(item)) return;
@@ -350,7 +357,7 @@ async function submitRequest(): Promise<void> {
   requestKey.value = key;
   submitting.value = true;
   try {
-    await postApi<MediaItem>('/requests', { tmdb_id: item.tmdb_id, media_type: item.media_type, note: note.value }, csrfToken.value);
+    await postApi<MediaItem>('/requests', { tmdb_id: item.tmdb_id, media_id: item.media_id || String(item.tmdb_id), media_source: item.media_source || 'tmdb', media_type: item.media_type, seasons: item.media_type === 'tv' ? selectedSeasons.value : [], note: note.value }, csrfToken.value);
     detailNotice.value = '求片已提交，状态已更新为进行中。';
     await loadLists();
   } catch (error) {
@@ -490,7 +497,7 @@ onBeforeUnmount(() => {
             <dl class="portal-detail-facts"><div><dt><CalendarDays :size="14" />发行日期</dt><dd>{{ formatReleaseDate(selected) }}</dd></div><div><dt><Star :size="14" />评分</dt><dd>{{ formatRating(selected.rating) }}</dd></div><div><dt><Clock3 :size="14" />时长</dt><dd>{{ formatRuntime(selected.runtime_minutes) }}</dd></div><div><dt><Film :size="14" />状态</dt><dd>{{ selected.status || '—' }}</dd></div><div v-if="selected.media_type === 'tv'"><dt><Tv :size="14" />季 / 集</dt><dd>{{ selected.seasons ?? '—' }} 季 · {{ selected.episodes ?? '—' }} 集</dd></div><div><dt><UserRound :size="14" />TMDB ID</dt><dd>{{ selected.tmdb_id }}</dd></div></dl>
             <section v-if="selected.directors?.length" class="portal-credit-section"><h3><UserRound :size="16" />导演</h3><div class="portal-director-list"><span v-for="person in (selected.directors || []).slice(0, 5)" :key="person.id || person.name">{{ person.name }}</span></div></section>
             <section v-if="selected.cast?.length" class="portal-credit-section"><h3><Users :size="16" />演员</h3><div class="portal-cast-grid"><div v-for="person in (selected.cast || []).slice(0, 12)" :key="person.id || person.name" class="portal-cast-person"><img :src="profileImage(person)" :alt="person.name" loading="lazy"><div><strong>{{ person.name }}</strong><span>{{ person.character || '角色未知' }}</span></div></div></div></section>
-            <form class="portal-request-form" @submit.prevent="submitRequest"><label><span>求片备注（可选）</span><textarea v-model="note" maxlength="1000" placeholder="例如：希望优先添加国语版" :disabled="!selectedCanSubmit"></textarea></label><p v-if="selectedState === 'pending'" class="hint">该作品已提交求片，等待管理员处理。</p><p v-else-if="selectedState === 'library'" class="hint">该作品已入库，无需重复提交。</p><button class="primary portal-request-submit" type="submit" :disabled="!selectedCanSubmit"><LoaderCircle v-if="submitting" class="spin" :size="17" /><Send v-else :size="17" />{{ submitting ? '提交中' : selectedState === 'rejected' ? '重新提交求片' : '确认求片' }}</button></form>
+            <form class="portal-request-form" @submit.prevent="submitRequest"><div v-if="selected.media_type === 'tv' && selected.seasons" class="season-picker"><strong>选择季（可多选）</strong><label v-for="season in selected.seasons" :key="season"><input v-model="selectedSeasons" type="checkbox" :value="season" :disabled="!selectedCanSubmit"> 第 {{ season }} 季</label></div><label><span>求片备注（可选）</span><textarea v-model="note" maxlength="1000" placeholder="例如：希望优先添加国语版" :disabled="!selectedCanSubmit"></textarea></label><p v-if="selectedState === 'pending'" class="hint">该作品已提交求片，等待管理员处理。</p><p v-else-if="selectedState === 'library'" class="hint">该作品已入库，无需重复提交。</p><button class="primary portal-request-submit" type="submit" :disabled="!selectedCanSubmit || (selected.media_type === 'tv' && !selectedSeasons.length)"><LoaderCircle v-if="submitting" class="spin" :size="17" /><Send v-else :size="17" />{{ submitting ? '提交中' : selectedState === 'rejected' ? '重新提交求片' : '确认求片' }}</button></form>
           </template>
         </div>
       </dialog>

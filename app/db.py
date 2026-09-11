@@ -73,6 +73,16 @@ _ADDED_COLUMNS: dict[str, list[tuple[str, str]]] = {
     "bill_code_usages": [
         ("activation_notification_sent_at", "DATETIME"),
     ],
+    "media_requests": [
+        ("media_source", "VARCHAR(50) NOT NULL DEFAULT 'tmdb'"),
+        ("media_id", "VARCHAR(200) NOT NULL DEFAULT ''"),
+        ("moviepilot_subscribe_ids", "TEXT NOT NULL DEFAULT '[]'"),
+        ("moviepilot_subscribe_state", "VARCHAR(20) NOT NULL DEFAULT ''"),
+        ("library_state", "VARCHAR(20) NOT NULL DEFAULT 'unknown'"),
+        ("library_checked_at", "DATETIME"),
+        ("moviepilot_error", "TEXT NOT NULL DEFAULT ''"),
+        ("season_numbers", "TEXT NOT NULL DEFAULT '[]'"),
+    ],
 }
 
 

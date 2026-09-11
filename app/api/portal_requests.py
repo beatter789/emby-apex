@@ -126,13 +126,14 @@ async def request_tmdb_details_api(
     try:
         parsed_tmdb_id = int(tmdb_id)
     except (TypeError, ValueError):
-        return _error("TMDB ID 必须是正整数", status_code=400)
-    if parsed_tmdb_id <= 0:
-        return _error("TMDB ID 必须是正整数", status_code=400)
+        if services.moviepilot_enabled():
+            parsed_tmdb_id = 0
+        else:
+            return _error("TMDB ID 必须是正整数", status_code=400)
 
     await _ensure_latest_runtime_settings(db)
     try:
-        detail = await services.tmdb_details(media_type, parsed_tmdb_id)
+        detail = await services.tmdb_details(media_type, parsed_tmdb_id) if parsed_tmdb_id else await services.moviepilot_details("tmdb", tmdb_id, media_type)
     except RegistrationError as exc:
         return _error(str(exc), status_code=400)
     return _ok(detail)
@@ -154,16 +155,23 @@ async def create_request_api(request: Request, db: DbSession) -> JSONResponse:
     if not csrf_ok(request, csrf_token):
         return _error("CSRF 校验失败，请刷新页面重试", status_code=400)
 
-    tmdb_id_raw = payload.get("tmdb_id")
+    tmdb_id_raw = payload.get("tmdb_id") or payload.get("media_id")
     if isinstance(tmdb_id_raw, bool):
         return _error("作品信息无效", status_code=400)
     try:
         tmdb_id = int(str(tmdb_id_raw).strip())
     except (TypeError, ValueError):
-        return _error("作品信息无效", status_code=400)
+        if services.moviepilot_enabled() and payload.get("media_id"):
+            tmdb_id = 0
+        else:
+            return _error("作品信息无效", status_code=400)
 
     media_type = str(payload.get("media_type") or "").strip()
     note = str(payload.get("note") or "")
+    media_source = str(payload.get("media_source") or "tmdb").strip()
+    media_id = str(payload.get("media_id") or tmdb_id).strip()
+    raw_seasons = payload.get("seasons") or []
+    seasons = [int(x) for x in raw_seasons] if isinstance(raw_seasons, list) and all(str(x).lstrip("-").isdigit() for x in raw_seasons) else None
     await _ensure_latest_runtime_settings(db)
     try:
         item = await services.create_media_request(
@@ -172,6 +180,9 @@ async def create_request_api(request: Request, db: DbSession) -> JSONResponse:
             tmdb_id=tmdb_id,
             media_type=media_type,
             note=note,
+            media_source=media_source,
+            media_id=media_id,
+            seasons=seasons,
         )
     except RegistrationError as exc:
         return _error(str(exc), status_code=400)

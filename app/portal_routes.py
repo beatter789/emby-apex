@@ -76,6 +76,8 @@ def _media_request_json(
     payload: dict[str, object] = {
         "id": item.id,
         "tmdb_id": item.tmdb_id,
+        "media_source": item.media_source,
+        "media_id": item.media_id or str(item.tmdb_id),
         "media_type": item.media_type,
         "title": item.title,
         "original_title": item.original_title,
@@ -84,6 +86,9 @@ def _media_request_json(
         "poster_url": item.poster_url,
         "poster_local_url": f"/api/v1/requests/{item.id}/poster" if item.poster_local_path else "",
         "status": item.status,
+        "library_state": item.library_state,
+        "moviepilot_subscribe_state": item.moviepilot_subscribe_state,
+        "season_numbers": _json_list(item.season_numbers),
     }
     is_own = viewer_user_id is None or item.managed_user_id == viewer_user_id
     if is_own:
@@ -95,6 +100,14 @@ def _media_request_json(
             }
         )
     return payload
+
+def _json_list(value: str) -> list[object]:
+    import json
+    try:
+        data = json.loads(value or "[]")
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
 
 
 def _media_request_lists_json(

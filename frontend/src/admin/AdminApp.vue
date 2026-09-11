@@ -736,7 +736,7 @@ function safeOperationError(reason: unknown, action: string): string {
   if (reason instanceof ApiError && reason.status >= 500) return `${action}服务暂不可用，请稍后重试。`;
   return `${action}失败，请稍后重试。`;
 }
-async function testSetting(kind: 'tmdb' | 'wecom' | 'webhook' | 'telegram', category?: NotificationCategory): Promise<boolean> {
+async function testSetting(kind: 'tmdb' | 'moviepilot' | 'wecom' | 'webhook' | 'telegram', category?: NotificationCategory): Promise<boolean> {
   const localState = category ? notificationState.value[category] : null;
   if ((localState?.busy || settingsBusy.value)) return false;
   if (!online.value) {
@@ -748,6 +748,7 @@ async function testSetting(kind: 'tmdb' | 'wecom' | 'webhook' | 'telegram', cate
   else { settingsBusy.value = kind; settingsNotice.value = ''; settingsError.value = ''; }
   const payload: Record<string, unknown> = {};
   if (kind === 'tmdb') { payload.tmdb_api_key = settingValue('tmdb_api_key'); payload.tmdb_proxy_url = settingValue('tmdb_proxy_url'); }
+  if (kind === 'moviepilot') { payload.moviepilot_url = settingValue('moviepilot_url'); payload.moviepilot_username = settingValue('moviepilot_username'); payload.moviepilot_password = settingValue('moviepilot_password'); }
   if (kind === 'wecom') { for (const name of ['wecom_corp_id', 'wecom_agent_id', 'wecom_secret', 'wecom_api_base_url', 'notify_proxy_url', 'notify_wecom_use_proxy']) payload[name] = settingValue(name); }
   if (kind === 'webhook') { for (const name of ['notify_webhook_url', 'notify_proxy_url', 'notify_webhook_use_proxy']) payload[name] = settingValue(name); }
   if (kind === 'telegram') { for (const name of ['telegram_bot_token', 'telegram_chat_id', 'notify_proxy_url', 'notify_telegram_use_proxy']) payload[name] = settingValue(name); }
@@ -957,7 +958,7 @@ onBeforeUnmount(cleanup);
                  </div>
                  <div v-if="activationImageError" class="msg error" role="alert"><AlertCircle :size="16" />{{ activationImageError }}<a v-if="activationImageError.includes('登录')" href="/login" class="button-link">重新登录</a></div><div v-else-if="activationImageNotice" class="msg notice" role="status"><CheckCircle2 :size="16" />{{ activationImageNotice }}</div>
                </section>
-               <div class="settings-actions"><button class="secondary sm" type="button" :disabled="settingsBusy !== '' || !online" @click="testSetting('tmdb')"><LoaderCircle v-if="settingsBusy === 'tmdb'" class="spin" :size="15" />测试 TMDB/代理</button></div>
+               <div class="settings-actions"><button class="secondary sm" type="button" :disabled="settingsBusy !== '' || !online" @click="testSetting('tmdb')"><LoaderCircle v-if="settingsBusy === 'tmdb'" class="spin" :size="15" />测试 TMDB/代理</button><button class="secondary sm" type="button" :disabled="settingsBusy !== '' || !online" @click="testSetting('moviepilot')"><LoaderCircle v-if="settingsBusy === 'moviepilot'" class="spin" :size="15" />测试 MoviePilot</button></div>
             </template>
              <template v-else>
                <div v-if="!online" class="msg notice" role="status"><WifiOff :size="17" />当前离线，通知测试、保存和菜单操作已禁用。</div>

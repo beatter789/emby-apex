@@ -297,6 +297,14 @@ class MediaRequest(Base):
     rejected_by: Mapped[str | None] = mapped_column(String(200))
     rejection_reason: Mapped[str] = mapped_column(Text, default="", nullable=False)
     poster_error: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    media_source: Mapped[str] = mapped_column(String(50), default="tmdb", nullable=False)
+    media_id: Mapped[str] = mapped_column(String(200), default="", nullable=False)
+    moviepilot_subscribe_ids: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    moviepilot_subscribe_state: Mapped[str] = mapped_column(String(20), default="", nullable=False)
+    library_state: Mapped[str] = mapped_column(String(20), default="unknown", nullable=False)
+    library_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    moviepilot_error: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    season_numbers: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
 
 
 class MediaRequestSummary(Base):

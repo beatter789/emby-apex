@@ -22,6 +22,7 @@ from ..models import ActionLog, AppSetting, ManagedUser, MediaRequest, RedeemCod
 from ..routes import _parse_local_input, _safe_server_url, _redact_sensitive_text
 from ..security import encrypt_secret, is_logged_in, verify_admin
 from ..tmdb import TmdbClient, TmdbError
+from ..moviepilot import MoviePilotClient, MoviePilotError
 from ..wecom import WeComConfig, WeComError
 from .common import (
     csrf_required,
@@ -1174,6 +1175,20 @@ async def test_tmdb_connection(request: Request, db: DbSession) -> Any:
     except Exception:
         logger.exception("TMDB 连接测试失败")
         return error("TMDB 连接测试失败，请稍后重试", status_code=502)
+
+@router.post("/settings/moviepilot/test")
+async def test_moviepilot_connection(request: Request, db: DbSession) -> Any:
+    if not _admin_required(request):
+        return error("未登录或登录已失效", status_code=401)
+    data, form_token = await payload(request)
+    if not csrf_required(request, str(data.get("csrf_token") or form_token)):
+        return error("CSRF 校验失败，请刷新页面重试", status_code=400)
+    try:
+        async with MoviePilotClient(url=_runtime_value(data, "moviepilot_url"), username=_runtime_value(data, "moviepilot_username"), password=_runtime_value(data, "moviepilot_password")) as client:
+            await client.search_media("test", count=1)
+        return ok({"message": "MoviePilot 连接成功"})
+    except MoviePilotError as exc:
+        return error(str(exc), status_code=400)
 
 
 @router.post("/settings/wecom/test")

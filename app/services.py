@@ -44,6 +44,7 @@ from .models import (
 )
 from .security import decrypt_secret, hash_password, verify_password
 from .tmdb import TmdbClient, TmdbError
+from .moviepilot import MoviePilotClient, MoviePilotError
 
 logger = logging.getLogger(__name__)
 _settings = get_settings()
@@ -57,6 +58,8 @@ _user_mutation_lock = asyncio.Lock()
 # TMDB ID 链接，避免同一作品在短时间内反复建立 HTTP 连接。
 _TMDB_DETAILS_TTL = 60.0
 _tmdb_details_cache: dict[tuple[str, int], tuple[float, dict[str, Any]]] = {}
+_moviepilot_exists_cache: dict[tuple[str, str, str], tuple[float, bool | None]] = {}
+_moviepilot_exists_sem = asyncio.Semaphore(4)
 
 # 海报和通知不能阻塞“确认入库”这个关键操作。按服务器/作品去重，避免
 # 用户连续点击或多名管理员同时确认时启动重复下载。
@@ -2628,6 +2631,67 @@ def _local(value: datetime) -> str:
 
 MEDIA_REQUEST_STATUSES = {"pending", "in_library", "rejected"}
 MEDIA_TYPES = {"movie", "tv"}
+
+def moviepilot_enabled() -> bool:
+    r = settings_store.current()
+    return bool(str(getattr(r, "moviepilot_url", "") or "").strip())
+
+def _mp_type(value: str) -> str:
+    return "电影" if value == "movie" else "电视剧"
+
+def _normalize_mp(item: dict[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(item, dict): return None
+    source = str(item.get("media_source") or item.get("source") or "tmdb").strip()
+    mid = str(item.get("media_id") or item.get("id") or "").strip()
+    title = str(item.get("title") or item.get("name") or item.get("original_title") or "").strip()
+    if not mid or not title: return None
+    typ = str(item.get("type") or item.get("media_type") or "").lower()
+    media_type = "tv" if typ in {"tv", "电视剧", "series"} else "movie"
+    year = item.get("year") or item.get("release_date") or item.get("first_air_date")
+    try: year = int(str(year)[:4]) if year else None
+    except (TypeError, ValueError): year = None
+    poster = item.get("poster_url") or item.get("poster_path") or item.get("poster") or ""
+    if isinstance(poster, str) and poster.startswith("/"):
+        base = str(settings_store.current().moviepilot_url or "").rstrip("/")
+        poster = base + poster
+    return {"media_source": source, "media_id": mid, "tmdb_id": int(mid) if source == "tmdb" and mid.isdigit() else 0, "media_type": media_type, "title": title, "original_title": str(item.get("original_title") or item.get("original_name") or title), "year": year, "overview": str(item.get("overview") or ""), "poster_url": str(poster), "seasons": item.get("number_of_seasons") or item.get("seasons")}
+
+async def search_moviepilot(query: str, media_type: str | None = None) -> list[dict[str, Any]]:
+    try:
+        async with MoviePilotClient() as client:
+            rows = await client.search_media(query, media_type=_mp_type(media_type) if media_type in MEDIA_TYPES else None)
+    except MoviePilotError as exc: raise RegistrationError(str(exc)) from exc
+    normalized = [x for x in (_normalize_mp(r) for r in rows) if x]
+    normalized = [x for x in normalized if media_type not in MEDIA_TYPES or x["media_type"] == media_type]
+    async def check(item: dict[str, Any]) -> None:
+        key = (item["media_source"], item["media_id"], item["media_type"])
+        cached = _moviepilot_exists_cache.get(key)
+        if cached and time.monotonic() - cached[0] < 60:
+            item["library_state"] = "in_library" if cached[1] is True else "not_in_library" if cached[1] is False else "unknown"
+            return
+        try:
+            async with _moviepilot_exists_sem:
+                async with MoviePilotClient() as c:
+                    value = await c.exists(mtype=_mp_type(item["media_type"]), media_source=item["media_source"], media_id=item["media_id"], title=item["title"], year=item.get("year"))
+            _moviepilot_exists_cache[key] = (time.monotonic(), value)
+            item["library_state"] = "in_library" if value is True else "not_in_library" if value is False else "unknown"
+        except MoviePilotError:
+            item["library_state"] = "unknown"
+    await asyncio.gather(*(check(item) for item in normalized))
+    return normalized
+
+async def moviepilot_details(media_source: str, media_id: str, media_type: str | None = None) -> dict[str, Any]:
+    try:
+        async with MoviePilotClient() as client: row = await client.detail(media_source, media_id, _mp_type(media_type) if media_type in MEDIA_TYPES else None)
+    except MoviePilotError as exc: raise RegistrationError(str(exc)) from exc
+    result = _normalize_mp(row) or {"media_source": media_source, "media_id": media_id, "media_type": media_type or "movie", "title": media_id}
+    try:
+        async with MoviePilotClient() as client:
+            value = await client.exists(mtype=_mp_type(result["media_type"]), media_source=media_source, media_id=media_id, title=result.get("title", ""), year=result.get("year"))
+        result["library_state"] = "in_library" if value is True else "not_in_library" if value is False else "unknown"
+    except MoviePilotError:
+        result["library_state"] = "unknown"
+    return result
 TMDB_MODES = {"multi", "movie", "tv", "movie_id", "tv_id"}
 
 
@@ -2645,6 +2709,14 @@ def _validate_tmdb_query(mode: str, query: str) -> tuple[str, str]:
 
 
 async def search_tmdb(mode: str, query: str, year: str = "") -> list[dict[str, Any]]:
+    if moviepilot_enabled():
+        mode = mode.strip().lower()
+        mt = "movie" if mode == "movie" else "tv" if mode == "tv" else None
+        if mode.endswith("_id"):
+            mt = "movie" if mode == "movie_id" else "tv"
+            return [await moviepilot_details("tmdb", query, mt)]
+        if not query.strip(): raise RegistrationError("请输入搜索关键词")
+        return await search_moviepilot(query.strip(), mt)
     mode, query = _validate_tmdb_query(mode, query)
     try:
         year_value = int(year.strip()) if year.strip() else None
@@ -2668,6 +2740,8 @@ async def search_tmdb(mode: str, query: str, year: str = "") -> list[dict[str, A
 
 
 async def tmdb_details(media_type: str, tmdb_id: int) -> dict[str, Any]:
+    if moviepilot_enabled():
+        return await moviepilot_details("tmdb", str(tmdb_id), media_type)
     if media_type not in MEDIA_TYPES:
         raise RegistrationError("媒体类型无效")
     cache_key = (media_type, tmdb_id)
@@ -2693,12 +2767,21 @@ async def create_media_request(
     tmdb_id: int,
     media_type: str,
     note: str = "",
+    media_source: str = "tmdb",
+    media_id: str = "",
+    seasons: list[int] | None = None,
 ) -> MediaRequest:
-    if media_type not in MEDIA_TYPES or tmdb_id <= 0:
+    if media_type not in MEDIA_TYPES or (tmdb_id <= 0 and not moviepilot_enabled()):
         raise RegistrationError("作品信息无效")
     note = note.strip()
     if len(note) > 1000:
         raise RegistrationError("备注不能超过 1000 个字符")
+
+    identity_source, identity_id = media_source, (media_id or str(tmdb_id))
+    if moviepilot_enabled() and identity_id:
+        identity_rows = (await db.scalars(select(MediaRequest).where(MediaRequest.server_id == user.server_id, MediaRequest.managed_user_id == user.id, MediaRequest.media_source == identity_source, MediaRequest.media_id == identity_id))).all()
+        if any(r.status == "in_library" for r in identity_rows): raise RegistrationError("该作品已入库")
+        if any(r.status == "pending" for r in identity_rows): raise RegistrationError("你已经求过这部作品，请勿重复提交")
 
     already_library = await db.scalar(
         select(MediaRequest.id).where(
@@ -2734,7 +2817,7 @@ async def create_media_request(
     if any(item.status == "pending" for item in existing):
         raise RegistrationError("你已经求过这部作品，请勿重复提交")
 
-    detail = await tmdb_details(media_type, tmdb_id)
+    detail = await tmdb_details(media_type, tmdb_id) if not moviepilot_enabled() else await moviepilot_details(media_source, media_id or str(tmdb_id), media_type)
     server = await db.get(Server, user.server_id)
     request_row = MediaRequest(
         server_id=user.server_id,
@@ -2743,12 +2826,31 @@ async def create_media_request(
         media_type=detail["media_type"],
         title=detail.get("title") or detail.get("original_title") or f"TMDB {tmdb_id}",
         original_title=detail.get("original_title") or detail.get("title") or "",
-        year=detail["year"],
+        year=detail.get("year"),
         overview=detail.get("overview") or "",
         poster_url=detail.get("poster_url") or "",
         note=note,
         status="pending",
+        media_source=media_source,
+        media_id=media_id or str(tmdb_id),
+        season_numbers=json.dumps(seasons or [], ensure_ascii=False),
+        library_state="unknown",
     )
+    if moviepilot_enabled():
+        try:
+            async with MoviePilotClient() as client:
+                chosen = seasons if media_type == "tv" and seasons else [None]
+                ids: list[int] = []
+                for season in chosen:
+                    sid = await client.subscribe(name=request_row.title, media_type=_mp_type(media_type), media_source=media_source, media_id=media_id or str(tmdb_id), year=request_row.year, season=season)
+                    ids.append(sid)
+                    await client.pause(sid)
+                request_row.moviepilot_subscribe_ids = json.dumps(ids)
+                request_row.moviepilot_subscribe_state = "S"
+        except MoviePilotError as exc:
+            request_row.moviepilot_error = str(exc)
+            await db.rollback()
+            raise RegistrationError(str(exc)) from exc
     db.add(request_row)
     await log_action(
         db,

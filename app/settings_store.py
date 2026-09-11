@@ -74,6 +74,9 @@ class RuntimeSettings:
     tmdb_api_key: str
     tmdb_proxy_url: str
     tmdb_retention_days: int
+    moviepilot_url: str
+    moviepilot_username: str
+    moviepilot_password: str
     log_level: str
 
     @property
@@ -199,6 +202,9 @@ FIELD_SPECS: dict[str, tuple[str, int | None, int | None, str, str]] = {
         "TMDB 求片历史保留天数",
         "清理已入库/已拒绝求片详情和本地海报；0 表示永久保留",
     ),
+    "moviepilot_url": ("str", None, None, "MoviePilot 地址", "例如 http://moviepilot:3000；留空则停用 MoviePilot 求片"),
+    "moviepilot_username": ("str", None, None, "MoviePilot 普通用户名", "用于搜索、查询媒体库和创建订阅"),
+    "moviepilot_password": ("secret", None, None, "MoviePilot 密码", "密码加密保存，留空保持原密码"),
 }
 
 
@@ -250,6 +256,9 @@ def _from_env() -> RuntimeSettings:
         tmdb_api_key="",
         tmdb_proxy_url="",
         tmdb_retention_days=30,
+        moviepilot_url="",
+        moviepilot_username="",
+        moviepilot_password="",
         log_level="WARNING",
     )
 
