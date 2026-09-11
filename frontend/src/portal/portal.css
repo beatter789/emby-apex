@@ -255,3 +255,6 @@
   .scan-detail-scroll { max-height: calc(100dvh - 235px); }
   .scan-image { height: calc(100dvh - 235px); min-height: 220px; }
 }
+
+.season-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.season-grid label{padding:8px 12px;border-radius:8px;background:var(--surface-hover);cursor:pointer}.season-grid input{margin-right:5px}
+.season-row{position:relative;display:flex;align-items:center;gap:8px;flex-wrap:wrap}.season-row>.icon-button{margin-left:auto}.episode-list{width:100%;display:flex;flex-wrap:wrap;gap:6px;padding:8px 0 2px 24px}.episode-list span{font-size:12px;padding:3px 7px;border-radius:5px;background:var(--surface-raised);color:var(--text-muted)}

@@ -134,7 +134,7 @@ async def request_tmdb_details_api(
 
     await _ensure_latest_runtime_settings(db)
     try:
-        detail = await services.tmdb_details(media_type, parsed_tmdb_id) if (parsed_tmdb_id and media_source == "tmdb") else await services.moviepilot_details(media_source, tmdb_id, media_type)
+        detail = await services.tmdb_details(media_type, parsed_tmdb_id) if (parsed_tmdb_id and media_source in {"tmdb", "themoviedb"} and not services.moviepilot_enabled()) else await services.moviepilot_details(media_source, tmdb_id, media_type)
     except RegistrationError as exc:
         return _error(str(exc), status_code=400)
     return _ok(detail)
@@ -169,7 +169,7 @@ async def create_request_api(request: Request, db: DbSession) -> JSONResponse:
 
     media_type = str(payload.get("media_type") or "").strip()
     note = str(payload.get("note") or "")
-    media_source = str(payload.get("media_source") or "tmdb").strip()
+    media_source = str(payload.get("media_source") or "themoviedb").strip()
     media_id = str(payload.get("media_id") or tmdb_id).strip()
     raw_seasons = payload.get("seasons") or []
     seasons = [int(x) for x in raw_seasons] if isinstance(raw_seasons, list) and all(str(x).lstrip("-").isdigit() for x in raw_seasons) else None

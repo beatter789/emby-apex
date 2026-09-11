@@ -2641,7 +2641,8 @@ def _mp_type(value: str) -> str:
 
 def _normalize_mp(item: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(item, dict): return None
-    source = str(item.get("media_source") or item.get("source") or "tmdb").strip()
+    source = str(item.get("media_source") or item.get("source") or "themoviedb").strip()
+    if source == "tmdb": source = "themoviedb"
     mid = str(item.get("media_id") or item.get("id") or "").strip()
     title = str(item.get("title") or item.get("name") or item.get("original_title") or "").strip()
     if not mid or not title: return None
@@ -2660,7 +2661,7 @@ def _normalize_mp(item: dict[str, Any]) -> dict[str, Any] | None:
     except (TypeError, ValueError): seasons = None
     try: episodes = int(episodes) if episodes is not None else None
     except (TypeError, ValueError): episodes = None
-    return {"media_source": source, "media_id": mid, "tmdb_id": int(mid) if source == "tmdb" and mid.isdigit() else 0, "media_type": media_type, "title": title, "original_title": str(item.get("original_title") or item.get("original_name") or title), "year": year, "overview": str(item.get("overview") or ""), "poster_url": str(poster), "backdrop_url": str(item.get("backdrop_url") or item.get("backdrop_path") or "") or None, "rating": item.get("vote_average") or item.get("rating"), "status": item.get("status"), "seasons": seasons, "episodes": episodes, "genres": item.get("genres") if isinstance(item.get("genres"), list) else []}
+    return {"media_source": source, "media_id": mid, "tmdb_id": int(mid) if source in {"tmdb", "themoviedb"} and mid.isdigit() else 0, "media_type": media_type, "title": title, "original_title": str(item.get("original_title") or item.get("original_name") or title), "year": year, "overview": str(item.get("overview") or ""), "poster_url": str(poster), "backdrop_url": str(item.get("backdrop_url") or item.get("backdrop_path") or "") or None, "rating": item.get("vote_average") or item.get("rating"), "status": item.get("status"), "seasons": seasons, "episodes": episodes, "genres": item.get("genres") if isinstance(item.get("genres"), list) else []}
 
 async def search_moviepilot(query: str, media_type: str | None = None) -> list[dict[str, Any]]:
     try:
@@ -2720,8 +2721,9 @@ async def search_tmdb(mode: str, query: str, year: str = "") -> list[dict[str, A
         mt = "movie" if mode == "movie" else "tv" if mode == "tv" else None
         if mode.endswith("_id"):
             mt = "movie" if mode == "movie_id" else "tv"
-            return [await moviepilot_details("tmdb", query, mt)]
-        if not query.strip(): raise RegistrationError("请输入搜索关键词")
+            return [await moviepilot_details("themoviedb", query, mt)]
+        if not query.strip():
+            raise RegistrationError("请输入搜索关键词")
         return await search_moviepilot(query.strip(), mt)
     mode, query = _validate_tmdb_query(mode, query)
     try:
@@ -2747,7 +2749,7 @@ async def search_tmdb(mode: str, query: str, year: str = "") -> list[dict[str, A
 
 async def tmdb_details(media_type: str, tmdb_id: int) -> dict[str, Any]:
     if moviepilot_enabled():
-        return await moviepilot_details("tmdb", str(tmdb_id), media_type)
+        return await moviepilot_details("themoviedb", str(tmdb_id), media_type)
     if media_type not in MEDIA_TYPES:
         raise RegistrationError("媒体类型无效")
     cache_key = (media_type, tmdb_id)
