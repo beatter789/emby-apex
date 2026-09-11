@@ -2791,7 +2791,7 @@ async def create_media_request(
     # MoviePilot V3 uses ``themoviedb`` as the provider identifier.  Accept
     # legacy Apex ``tmdb`` values from older clients while persisting one
     # stable identity for duplicate detection and status refreshes.
-    if moviepilot_enabled() and str(media_source).strip().lower() == "tmdb":
+    if moviepilot_enabled() and str(media_source or "").strip().lower() in {"", "tmdb"}:
         media_source = "themoviedb"
     if media_type not in MEDIA_TYPES or (tmdb_id <= 0 and not moviepilot_enabled()):
         raise RegistrationError("作品信息无效")
