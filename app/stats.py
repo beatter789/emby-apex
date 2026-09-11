@@ -163,9 +163,9 @@ async def watch_time_for_date(
     """Return ended playback time for one retained calendar day."""
     target, start, end = _watch_date_range(selected_date)
     filters = (
-        PlaybackRecord.started_at >= start,
-        PlaybackRecord.started_at < end,
         PlaybackRecord.ended_at.is_not(None),
+        PlaybackRecord.ended_at >= start,
+        PlaybackRecord.ended_at < end,
     )
     total_seconds = (
         await db.scalar(
