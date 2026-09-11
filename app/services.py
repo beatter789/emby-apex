@@ -2654,7 +2654,13 @@ def _normalize_mp(item: dict[str, Any]) -> dict[str, Any] | None:
     if isinstance(poster, str) and poster.startswith("/"):
         base = str(settings_store.current().moviepilot_url or "").rstrip("/")
         poster = base + poster
-    return {"media_source": source, "media_id": mid, "tmdb_id": int(mid) if source == "tmdb" and mid.isdigit() else 0, "media_type": media_type, "title": title, "original_title": str(item.get("original_title") or item.get("original_name") or title), "year": year, "overview": str(item.get("overview") or ""), "poster_url": str(poster), "seasons": item.get("number_of_seasons") or item.get("seasons")}
+    seasons = item.get("number_of_seasons") or item.get("seasons")
+    episodes = item.get("number_of_episodes") or item.get("episodes") or item.get("total_episode")
+    try: seasons = int(seasons) if seasons is not None else None
+    except (TypeError, ValueError): seasons = None
+    try: episodes = int(episodes) if episodes is not None else None
+    except (TypeError, ValueError): episodes = None
+    return {"media_source": source, "media_id": mid, "tmdb_id": int(mid) if source == "tmdb" and mid.isdigit() else 0, "media_type": media_type, "title": title, "original_title": str(item.get("original_title") or item.get("original_name") or title), "year": year, "overview": str(item.get("overview") or ""), "poster_url": str(poster), "backdrop_url": str(item.get("backdrop_url") or item.get("backdrop_path") or "") or None, "rating": item.get("vote_average") or item.get("rating"), "status": item.get("status"), "seasons": seasons, "episodes": episodes, "genres": item.get("genres") if isinstance(item.get("genres"), list) else []}
 
 async def search_moviepilot(query: str, media_type: str | None = None) -> list[dict[str, Any]]:
     try:

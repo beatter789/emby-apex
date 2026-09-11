@@ -98,6 +98,9 @@
   border-radius: 0;
   object-fit: cover;
 }
+.media-hover-overview { position:absolute; inset:0; display:flex; align-items:flex-end; padding:14px 11px 70px; color:#fff; font-size:13px; line-height:1.5; opacity:0; pointer-events:none; background:linear-gradient(transparent 25%,rgba(10,8,18,.9)); transition:opacity .18s ease; }
+.portal-poster-card { position:relative; }
+.portal-poster-card:hover .media-hover-overview, .portal-poster-card:focus-visible .media-hover-overview { opacity:1; }
 .portal-poster-card .result-body { display: grid; gap: 5px; padding: 11px; }
 .portal-poster-card .overview { margin-bottom: 4px; -webkit-line-clamp: 3; }
 .portal-poster-card .secondary { width: 100%; min-height: 40px; }

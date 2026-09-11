@@ -118,6 +118,7 @@ async def request_tmdb_details_api(
     media_type: str,
     tmdb_id: str,
     db: DbSession,
+    media_source: str = "tmdb",
 ) -> JSONResponse:
     user = await _portal_api_user(request, db)
     if user is None:
@@ -133,7 +134,7 @@ async def request_tmdb_details_api(
 
     await _ensure_latest_runtime_settings(db)
     try:
-        detail = await services.tmdb_details(media_type, parsed_tmdb_id) if parsed_tmdb_id else await services.moviepilot_details("tmdb", tmdb_id, media_type)
+        detail = await services.tmdb_details(media_type, parsed_tmdb_id) if (parsed_tmdb_id and media_source == "tmdb") else await services.moviepilot_details(media_source, tmdb_id, media_type)
     except RegistrationError as exc:
         return _error(str(exc), status_code=400)
     return _ok(detail)

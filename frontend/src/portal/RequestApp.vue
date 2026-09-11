@@ -200,7 +200,7 @@ function profileImage(person: CreditPerson): string {
 }
 
 function hasCompleteDetails(item: MediaItem): boolean {
-  return Boolean(item.title && item.media_type && item.tmdb_id && detailFields.every((field) => Object.prototype.hasOwnProperty.call(item, field)));
+  return Boolean(item.title && item.media_type && (item.media_id || item.tmdb_id) && detailFields.every((field) => Object.prototype.hasOwnProperty.call(item, field)));
 }
 
 function clearMessages(): void {
@@ -303,7 +303,7 @@ async function select(item: MediaItem): Promise<void> {
   if (hasCompleteDetails(item)) return;
   detailLoading.value = true;
   try {
-    const response = await getApi<MediaItem>(`/requests/tmdb/${encodeURIComponent(item.media_type)}/${encodeURIComponent(String(item.tmdb_id))}`);
+    const response = await getApi<MediaItem>(`/requests/tmdb/${encodeURIComponent(item.media_type)}/${encodeURIComponent(String(item.media_id || item.tmdb_id))}?media_source=${encodeURIComponent(item.media_source || 'tmdb')}`);
     selected.value = { ...item, ...(response.data || {}) };
   } catch (error) {
     detailError.value = detailErrorMessage(error, '作品详情加载失败，请稍后重试。');
