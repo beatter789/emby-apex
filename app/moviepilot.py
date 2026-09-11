@@ -34,6 +34,17 @@ def _unwrap(payload: Any) -> Any:
         return payload.get("data")
     return payload
 
+
+def _safe_message(value: object, *secrets: str | None) -> str:
+    """Compact a remote error while removing credentials echoed by a proxy."""
+
+    message = " ".join(str(value or "").split())[:300]
+    for secret in secrets:
+        candidate = str(secret or "")
+        if candidate:
+            message = message.replace(candidate, "[REDACTED]")
+    return message
+
 class MoviePilotClient:
     def __init__(self, *, timeout: float | None = None, url: str | None = None, username: str | None = None, password: str | None = None):
         runtime = settings_store.current()
@@ -112,7 +123,7 @@ class MoviePilotClient:
                         message = body
                 except (ValueError, TypeError):
                     message = ""
-                message = " ".join(message.split())[:300]
+                message = _safe_message(message, self.password, self._token)
                 suffix = f": {message}" if message else ""
                 raise MoviePilotError(
                     f"MoviePilot 请求失败（HTTP {exc.response.status_code}）{suffix}"
