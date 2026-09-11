@@ -294,3 +294,18 @@
 .season-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}.season-grid label{padding:8px 12px;border-radius:8px;background:var(--surface-hover);cursor:pointer}.season-grid input{margin-right:5px}
 .season-row{position:relative;display:flex;align-items:center;gap:8px;flex-wrap:wrap}.season-row>.icon-button{margin-left:auto}.episode-list{width:100%;display:flex;flex-wrap:wrap;gap:6px;padding:8px 0 2px 24px}.episode-list span{font-size:12px;padding:3px 7px;border-radius:5px;background:var(--surface-raised);color:var(--text-muted)}
 @media (max-width:680px){.portal-request-workspace .vue-request-app{padding:16px 14px 48px}.portal-workspace.portal-request-workspace{display:block}.portal-request-workspace .portal-poster-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.portal-request-workspace .portal-poster-card .result-body{padding:10px}.portal-request-workspace .portal-detail-hero{grid-template-columns:84px minmax(0,1fr);padding:14px}.portal-request-workspace .portal-detail-copy h3{font-size:20px}}
+.portal-workspace { width:100%; max-width:none; grid-template-columns:250px minmax(0,1fr); gap:0; }
+.portal-sidebar { position:sticky; top:0; height:100vh; min-height:100vh; border:0; border-radius:0; background:#0d0f14; box-shadow:none; padding:16px 12px; }
+.portal-sidebar .brand-block { padding:10px 14px 24px; }
+.portal-sidebar .brand-copy strong { font-size:20px; color:#f1edff; }
+.portal-sidebar-nav button,.portal-sidebar-nav a { min-height:46px; border-radius:8px; font-size:15px; }
+.portal-sidebar-nav button.on,.portal-sidebar-nav a.on { background:#29223f; color:#fff; }
+.portal-header { border:0; background:transparent; }
+.portal-main,.portal-page-content,.portal-request-workspace .vue-request-app { background:#0d0f14; color:#ecebfa; }
+.portal-main { min-height:100vh; }
+.portal-main .portal-header { padding:22px 36px; }
+.portal-main .portal-section,.portal-main .card { border-color:#282b37; background:#151720; }
+.portal-main .portal-brand span { color:#f0edff; }
+.portal-media-dialog-panel { width:100vw; max-width:none; height:100vh; max-height:none; border:0; border-radius:0; padding:34px 5vw; background:#0d0f14; }
+.portal-media-dialog { padding:0; }
+@media (max-width:680px){.portal-workspace{display:block}.portal-sidebar{display:none}.portal-media-dialog-panel{padding:16px 14px}}

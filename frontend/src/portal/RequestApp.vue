@@ -301,6 +301,7 @@ function closeDetailDialog(): void {
   const dialog = detailDialog.value;
   if (dialog?.open && typeof dialog.close === 'function') dialog.close();
   detailVisible.value = false;
+  if (location.hash.startsWith('#media=')) history.replaceState(null, '', location.pathname + location.search);
 }
 
 async function select(item: MediaItem): Promise<void> {
@@ -309,6 +310,7 @@ async function select(item: MediaItem): Promise<void> {
   detailNotice.value = '';
   detailLoginExpired.value = false;
   selected.value = { ...item };
+  history.pushState(null, '', `#media=${encodeURIComponent(item.media_source || 'themoviedb')}:${encodeURIComponent(item.media_id || String(item.tmdb_id))}`);
   selectedSeasons.value = item.media_type === 'tv' && item.seasons ? Array.from({ length: item.seasons }, (_, i) => i + 1) : [];
   expandedSeasons.value = [];
   note.value = item.note || '';
@@ -427,6 +429,7 @@ onMounted(async () => {
   document.title = '求片 · Emby Apex';
   window.addEventListener('online', updateOnlineState);
   window.addEventListener('offline', updateOnlineState);
+  window.addEventListener('popstate', closeDetailDialog);
   try {
     const csrf = await getApi<{ csrf_token: string }>('/auth/csrf');
     csrfToken.value = csrf.data?.csrf_token || '';
@@ -439,6 +442,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.removeEventListener('online', updateOnlineState);
   window.removeEventListener('offline', updateOnlineState);
+  window.removeEventListener('popstate', closeDetailDialog);
   closeDetailDialog();
 });
 </script>
