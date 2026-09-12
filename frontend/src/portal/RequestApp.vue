@@ -294,7 +294,7 @@ async function loadLists(): Promise<void> {
     // Repair legacy rows created before MoviePilot metadata was persisted.
     // Details are fetched only for rows missing a title or artwork.
     const all = [...nextLists.pending, ...nextLists.in_library, ...nextLists.rejected];
-    await Promise.all(all.filter((item) => !item.poster_url && !item.poster_local_url || !item.title || item.title === String(item.media_id || item.tmdb_id)).slice(0, 12).map(async (item) => {
+    await Promise.all(all.filter((item) => !item.poster_url && !item.poster_local_url || !item.title || item.title === String(item.media_id || item.tmdb_id) || /^\d+$/.test(String(item.title || '').trim())).map(async (item) => {
       try {
         const id = item.media_id || String(item.tmdb_id);
         const detail = await getApi<MediaItem>(`/requests/tmdb/${encodeURIComponent(item.media_type)}/${encodeURIComponent(id)}?media_source=${encodeURIComponent(item.media_source || 'themoviedb')}`);

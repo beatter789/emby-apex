@@ -324,3 +324,15 @@
 .portal-request-workspace .portal-detail-poster{width:240px}
 @media(max-width:680px){.portal-request-workspace .portal-dialog-header{padding:14px}.portal-request-workspace .portal-detail-hero{grid-template-columns:120px minmax(0,1fr);min-height:220px;padding:18px}.portal-request-workspace .portal-detail-poster{width:120px}}
 .season-state-pill{margin-left:auto;padding:5px 11px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.season-state-pill.ok{background:#183818;color:#8ee35f}.season-state-pill.pending{background:#3d2e18;color:#f5c45f}.season-state-pill.missing{background:#3a202b;color:#ff7993}.season-heart{font-size:26px;line-height:1;color:#f2c000;margin-left:4px}.season-card-main{min-height:52px}.season-episode-count{display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;background:#2c2f3b;color:#d4d1de}.mp-subscribe-grid .subscribe-card-image{aspect-ratio:2/3}.mp-subscribe-grid .subscribe-card-content{min-height:108px}
+
+/* MoviePilot V3 detail proportions and backdrop treatment. */
+.portal-request-workspace .portal-media-dialog-panel{position:relative;padding:0 5vw 56px;background:#101116}
+.portal-request-workspace .portal-dialog-header{position:absolute;z-index:10;top:20px;right:4vw;padding:0;margin:0;border:0;background:transparent}
+.portal-request-workspace .portal-dialog-header>div{display:none}
+.portal-request-workspace .portal-detail-hero{min-height:430px;grid-template-columns:13rem minmax(0,1fr);align-items:end;gap:24px;margin:0 -5vw;padding:190px 5vw 28px;border:0;border-radius:0;background-position:center top;background-size:cover}
+.portal-request-workspace .portal-detail-hero::before{background:linear-gradient(90deg,rgba(15,16,22,.9),rgba(15,16,22,.72) 45%,rgba(15,16,22,.88)),linear-gradient(0deg,#101116 0%,transparent 52%)}
+.portal-request-workspace .portal-detail-poster{width:13rem;box-shadow:0 25px 50px -12px rgba(0,0,0,.6);border-radius:6px}
+.portal-request-workspace .portal-detail-copy{align-self:end;padding-bottom:4px}.portal-request-workspace .portal-detail-copy h3{font-size:32px;line-height:1.2}
+.portal-request-workspace .mp-detail-actions{position:absolute;top:350px;right:5vw;margin:0}
+.portal-request-workspace .portal-detail-overview{max-width:900px;margin-top:26px;font-size:15px;line-height:1.8}.portal-request-workspace .portal-detail-facts{max-width:900px;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:22px}
+@media(max-width:680px){.portal-request-workspace .portal-media-dialog-panel{padding:0 14px 36px}.portal-request-workspace .portal-detail-hero{grid-template-columns:96px minmax(0,1fr);min-height:350px;margin:0 -14px;padding:120px 14px 20px;gap:14px}.portal-request-workspace .portal-detail-poster{width:96px}.portal-request-workspace .portal-detail-copy h3{font-size:22px}.portal-request-workspace .mp-detail-actions{position:static;margin:14px 0 0}.portal-request-workspace .portal-detail-facts{grid-template-columns:1fr 1fr}.portal-request-workspace .portal-dialog-header{top:10px;right:10px}}

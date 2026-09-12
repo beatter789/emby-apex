@@ -2666,6 +2666,8 @@ def _normalize_mp(item: dict[str, Any]) -> dict[str, Any] | None:
         or item.get("name")
         or item.get("original_title")
         or item.get("original_name")
+        or item.get("media_name")
+        or item.get("display_name")
         or item.get("title_year")
         or ""
     ).strip()
@@ -2696,10 +2698,12 @@ def _normalize_mp(item: dict[str, Any]) -> dict[str, Any] | None:
     backdrop = str(item.get("backdrop_url") or item.get("backdrop_path") or item.get("backdrop") or "").strip()
     if backdrop.startswith("/"):
         backdrop = str(settings_store.current().moviepilot_url or "").rstrip("/") + backdrop
-    season_info = item.get("season_info") or item.get("seasons_info") or item.get("seasons_detail") or item.get("seasons") or []
+    season_info = item.get("season_info") or item.get("seasons_info") or item.get("seasons_detail") or []
+    if isinstance(season_info, dict):
+        season_info = [dict(v, season_number=v.get("season_number", k)) if isinstance(v, dict) else {"season_number": k, "episode_count": v} for k, v in season_info.items()]
     if not isinstance(season_info, list): season_info = []
     episodes_info = item.get("episodes_info") or item.get("episode_info") or {}
-    if not isinstance(episodes_info, dict): episodes_info = {}
+    if not isinstance(episodes_info, (dict, list)): episodes_info = {}
     directors = item.get("directors") or item.get("crew") or []
     cast = item.get("cast") or item.get("actors") or item.get("credits") or []
     return {"media_source": source, "media_id": mid, "tmdb_id": int(mid) if source in {"tmdb", "themoviedb"} and mid.isdigit() else 0, "media_type": media_type, "title": title, "original_title": str(item.get("original_title") or item.get("original_name") or title), "year": year, "overview": str(item.get("overview") or ""), "poster_url": str(poster), "backdrop_url": backdrop or None, "rating": item.get("vote_average") or item.get("rating"), "status": item.get("status"), "seasons": seasons, "episodes": episodes, "genres": item.get("genres") if isinstance(item.get("genres"), list) else [], "season_info": season_info, "episodes_info": episodes_info, "directors": directors if isinstance(directors, list) else [], "cast": cast if isinstance(cast, list) else []}
