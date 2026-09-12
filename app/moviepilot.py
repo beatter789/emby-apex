@@ -152,12 +152,81 @@ class MoviePilotClient:
 
     async def detail(self, media_source: str, media_id: str, media_type: str | None = None) -> dict[str, Any]:
         source = _source(media_source)
+        # MoviePilot V3 resolves media details by a provider-qualified id
+        # (for example ``tmdb:325709``).  Search results expose the numeric
+        # id separately, so add the prefix at the API boundary when callers
+        # pass a bare id.  The response still contains the canonical numeric
+        # ``media_id``.
+        raw_id = str(media_id).strip()
+        if ":" not in raw_id and source:
+            path_id = f"tmdb:{raw_id}" if source == "themoviedb" else f"{source}:{raw_id}"
+        else:
+            path_id = raw_id
         data = await self._request(
             "GET",
-            f"media/{quote(str(media_id), safe='')}",
+            f"media/{quote(path_id, safe='')}",
             params={"media_source": source, "type_name": media_type or ""},
         )
         return data if isinstance(data, dict) else {}
+
+    async def episode_groups(self, tmdb_id: int | str) -> list[dict[str, Any]]:
+        """Return TMDB episode groups available for a TV series.
+
+        MoviePilot exposes groups separately from ``media/{id}``.  The
+        endpoint returns an array on current V3 builds, while older builds
+        may wrap it in a ``results``/``items`` property; accept both forms so
+        callers can persist a stable snapshot.
+        """
+        data = await self._request("GET", f"media/groups/{quote(str(tmdb_id), safe='')}")
+        if isinstance(data, list):
+            return [row for row in data if isinstance(row, dict)]
+        if isinstance(data, dict):
+            for key in ("results", "items", "groups", "data"):
+                value = data.get(key)
+                if isinstance(value, list):
+                    return [row for row in value if isinstance(row, dict)]
+        return []
+
+    async def group_seasons(self, group_id: str) -> list[dict[str, Any]]:
+        """Return season summaries for a MoviePilot episode group."""
+        data = await self._request(
+            "GET", f"media/group/seasons/{quote(str(group_id), safe='')}"
+        )
+        if isinstance(data, list):
+            return [row for row in data if isinstance(row, dict)]
+        if isinstance(data, dict):
+            for key in ("results", "items", "seasons", "data"):
+                value = data.get(key)
+                if isinstance(value, list):
+                    return [row for row in value if isinstance(row, dict)]
+        return []
+
+    async def season_episodes(
+        self,
+        tmdb_id: int | str,
+        season_number: int | str,
+        *,
+        episode_group: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return episode details for one TMDB season.
+
+        The native MoviePilot UI calls ``tmdb/{id}/{season}`` and includes
+        ``episode_group`` only when a non-default group is selected.
+        """
+        params = {"episode_group": episode_group} if episode_group else None
+        data = await self._request(
+            "GET",
+            f"tmdb/{quote(str(tmdb_id), safe='')}/{quote(str(season_number), safe='')}",
+            params=params,
+        )
+        if isinstance(data, list):
+            return [row for row in data if isinstance(row, dict)]
+        if isinstance(data, dict):
+            for key in ("results", "items", "episodes", "data"):
+                value = data.get(key)
+                if isinstance(value, list):
+                    return [row for row in value if isinstance(row, dict)]
+        return []
 
     async def exists(self, *, mtype: str, media_source: str, media_id: str, season: int | None = None, title: str = "", year: int | None = None) -> bool | None:
         params = {"mtype": mtype, "media_source": _source(media_source), "media_id": media_id, "title": title, "year": year or ""}

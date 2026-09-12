@@ -219,8 +219,17 @@ async def request_season_api(
         return _ok([])
     await _ensure_latest_runtime_settings(db)
     try:
-        async with services.TmdbClient() as client:
-            rows = await client.season_episodes(item.tmdb_id, season_number)
+        if services.moviepilot_enabled():
+            snapshot_group = str(snapshot.get("episode_group") or "").strip() or None
+            async with services.MoviePilotClient() as client:
+                rows = await client.season_episodes(
+                    item.tmdb_id,
+                    season_number,
+                    episode_group=snapshot_group,
+                )
+        else:
+            async with services.TmdbClient() as client:
+                rows = await client.season_episodes(item.tmdb_id, season_number)
     except Exception:
         rows = []
     snapshot.setdefault("episodes_info", {})
