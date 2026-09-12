@@ -165,6 +165,23 @@ def normalize_details(item: dict[str, Any], media_type: str) -> dict[str, Any] |
         runtime = episode_run_time[0]
     seasons = _optional_int(item.get("number_of_seasons"))
     episodes = _optional_int(item.get("number_of_episodes"))
+    raw_seasons = item.get("seasons") if isinstance(item.get("seasons"), list) else []
+    season_info = []
+    for season in raw_seasons:
+        if not isinstance(season, dict):
+            continue
+        number = _optional_int(season.get("season_number"))
+        if number is None:
+            continue
+        poster_path = str(season.get("poster_path") or "").strip()
+        season_info.append({
+            "season_number": number,
+            "name": str(season.get("name") or f"第 {number} 季"),
+            "episode_count": _optional_int(season.get("episode_count")) or 0,
+            "overview": str(season.get("overview") or "").strip() or None,
+            "air_date": str(season.get("air_date") or "").strip() or None,
+            "poster_url": f"{TMDB_IMAGE}{poster_path}" if poster_path else None,
+        })
     release_value = item.get("release_date") if media_type == "movie" else item.get("first_air_date")
     release_date = str(release_value or "").strip() or None
     normalized.update(
@@ -185,6 +202,8 @@ def normalize_details(item: dict[str, Any], media_type: str) -> dict[str, Any] |
             "cast": cast,
             "seasons": seasons,
             "episodes": episodes,
+            "season_info": season_info,
+            "episodes_info": {},
         }
     )
     return normalized
@@ -281,6 +300,31 @@ class TmdbClient:
         if normalized is None or not normalized["tmdb_id"]:
             raise TmdbError("TMDB 未找到该作品")
         return normalized
+
+    async def season_episodes(self, tmdb_id: int, season_number: int) -> list[dict[str, Any]]:
+        """Return one TV season's episode metadata in portal's stable shape."""
+        if tmdb_id <= 0 or season_number < 0:
+            raise TmdbError("TMDB 季集信息无效")
+        data = await self._get(f"/tv/{tmdb_id}/season/{season_number}")
+        raw = data.get("episodes") if isinstance(data, dict) else []
+        result: list[dict[str, Any]] = []
+        for episode in raw if isinstance(raw, list) else []:
+            if not isinstance(episode, dict):
+                continue
+            number = _optional_int(episode.get("episode_number"))
+            if number is None:
+                continue
+            still_path = str(episode.get("still_path") or "").strip()
+            result.append(
+                {
+                    "episode_number": number,
+                    "name": str(episode.get("name") or "").strip() or None,
+                    "overview": str(episode.get("overview") or "").strip() or None,
+                    "air_date": str(episode.get("air_date") or "").strip() or None,
+                    "still_url": f"{TMDB_BACKDROP}{still_path}" if still_path else None,
+                }
+            )
+        return result
 
     async def test_connection(self) -> None:
         await self._get("/configuration")

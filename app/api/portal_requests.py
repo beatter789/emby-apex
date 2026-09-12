@@ -7,6 +7,7 @@ user's private request notes.
 
 from __future__ import annotations
 
+import json
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
@@ -19,6 +20,7 @@ from ..db import get_session
 from ..models import ManagedUser, MediaRequest
 from ..portal_routes import (
     _ensure_latest_runtime_settings,
+    _json_object,
     _media_request_json,
     _media_request_lists_json,
 )
@@ -140,6 +142,96 @@ async def request_tmdb_details_api(
     return _ok(detail)
 
 
+@router.get("/requests/{request_id}")
+async def request_detail_api(
+    request_id: int, request: Request, db: DbSession
+) -> JSONResponse:
+    """Read a persisted request snapshot, hydrating legacy rows once."""
+    user = await _portal_api_user(request, db)
+    if user is None:
+        return _error("未登录或登录已失效", status_code=401)
+    item = await db.get(MediaRequest, request_id)
+    if item is None or item.server_id != user.server_id:
+        return _error("求片记录不存在", status_code=404)
+    if item.managed_user_id != user.id and item.status != "in_library":
+        return _error("无权查看该求片记录", status_code=404)
+    snapshot = _json_object(item.detail_snapshot)
+    if not snapshot:
+        # Rows created before snapshot support are repaired lazily.  The
+        # marker prevents a permanently unavailable upstream from being
+        # queried on every click.
+        await _ensure_latest_runtime_settings(db)
+        try:
+            if services.moviepilot_enabled():
+                detail = await services.moviepilot_details(
+                    item.media_source,
+                    item.media_id or str(item.tmdb_id),
+                    item.media_type,
+                )
+            else:
+                detail = await services.tmdb_details(item.media_type, item.tmdb_id)
+        except RegistrationError:
+            detail = {}
+        if detail:
+            snapshot = dict(detail)
+            item.title = str(detail.get("title") or item.title or item.tmdb_id)
+            item.original_title = str(detail.get("original_title") or item.original_title or "")
+            item.year = detail.get("year") or item.year
+            item.overview = str(detail.get("overview") or item.overview or "")
+            item.poster_url = str(detail.get("poster_url") or item.poster_url or "")
+            item.detail_snapshot = json.dumps(snapshot, ensure_ascii=False)
+        else:
+            item.detail_snapshot = json.dumps({"_hydration_attempted": True}, ensure_ascii=False)
+        await db.commit()
+    return _ok(_media_request_json(item, viewer_user_id=user.id))
+
+
+@router.get("/requests/{request_id}/season/{season_number}")
+async def request_season_api(
+    request_id: int, season_number: int, request: Request, db: DbSession
+) -> JSONResponse:
+    """Return cached episode metadata, hydrating a legacy snapshot once."""
+    user = await _portal_api_user(request, db)
+    if user is None:
+        return _error("未登录或登录已失效", status_code=401)
+    item = await db.get(MediaRequest, request_id)
+    if item is None or item.server_id != user.server_id:
+        return _error("求片记录不存在", status_code=404)
+    if item.managed_user_id != user.id and item.status != "in_library":
+        return _error("无权查看该求片记录", status_code=404)
+    if item.media_type != "tv" or season_number < 0:
+        return _error("季集信息无效", status_code=400)
+    snapshot = _json_object(item.detail_snapshot)
+    episodes = snapshot.get("episodes_info")
+    if isinstance(episodes, dict) and isinstance(episodes.get(str(season_number)), list):
+        return _ok(episodes[str(season_number)])
+    if isinstance(episodes, list):
+        rows = [row for row in episodes if isinstance(row, dict) and int(row.get("season_number", row.get("season", 1)) or 1) == season_number]
+        if rows:
+            return _ok(rows)
+    if not item.tmdb_id:
+        snapshot.setdefault("episodes_info", {})
+        if not isinstance(snapshot["episodes_info"], dict):
+            snapshot["episodes_info"] = {}
+        snapshot["episodes_info"][str(season_number)] = []
+        item.detail_snapshot = json.dumps(snapshot, ensure_ascii=False)
+        await db.commit()
+        return _ok([])
+    await _ensure_latest_runtime_settings(db)
+    try:
+        async with services.TmdbClient() as client:
+            rows = await client.season_episodes(item.tmdb_id, season_number)
+    except Exception:
+        rows = []
+    snapshot.setdefault("episodes_info", {})
+    if not isinstance(snapshot["episodes_info"], dict):
+        snapshot["episodes_info"] = {}
+    snapshot["episodes_info"][str(season_number)] = rows
+    item.detail_snapshot = json.dumps(snapshot, ensure_ascii=False)
+    await db.commit()
+    return _ok(rows)
+
+
 @router.post("/requests")
 async def create_request_api(request: Request, db: DbSession) -> JSONResponse:
     user = await _portal_api_user(request, db)
@@ -173,6 +265,9 @@ async def create_request_api(request: Request, db: DbSession) -> JSONResponse:
     media_id = str(payload.get("media_id") or tmdb_id).strip()
     raw_seasons = payload.get("seasons") or []
     seasons = [int(x) for x in raw_seasons] if isinstance(raw_seasons, list) and all(str(x).lstrip("-").isdigit() for x in raw_seasons) else None
+    detail_payload = payload.get("detail")
+    if not isinstance(detail_payload, dict):
+        detail_payload = None
     await _ensure_latest_runtime_settings(db)
     try:
         item = await services.create_media_request(
@@ -184,6 +279,7 @@ async def create_request_api(request: Request, db: DbSession) -> JSONResponse:
             media_source=media_source,
             media_id=media_id,
             seasons=seasons,
+            detail_override=detail_payload,
         )
     except RegistrationError as exc:
         return _error(str(exc), status_code=400)

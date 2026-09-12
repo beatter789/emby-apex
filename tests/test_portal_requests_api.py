@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import tempfile
 import unittest
@@ -16,6 +17,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app import services  # noqa: E402
 from app.db import SessionLocal, engine, init_db  # noqa: E402
 from app.models import ManagedUser, MediaRequest, Server, utcnow  # noqa: E402
+from sqlalchemy import select  # noqa: E402
 from app.portal_main import app  # noqa: E402
 from app.security import hash_password  # noqa: E402
 
@@ -291,6 +293,104 @@ class PortalRequestsApiTests(unittest.TestCase):
             response = self.client.get("/api/v1/requests/tmdb/movie/7")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"ok": True, "data": detail, "error": None})
+
+    def test_create_request_persists_detail_snapshot_from_search_result(self):
+        self._login_session()
+        detail = {
+            "tmdb_id": 616037,
+            "media_source": "themoviedb",
+            "media_id": "616037",
+            "media_type": "movie",
+            "title": "雷神4",
+            "original_title": "Thor: Love and Thunder",
+            "year": 2022,
+            "overview": "快照简介",
+            "poster_url": "https://image.tmdb.org/t/p/w342/poster.jpg",
+            "backdrop_url": "https://image.tmdb.org/t/p/w1280/backdrop.jpg",
+            "rating": 7.1,
+            "genres": ["动作"],
+            "directors": [{"name": "导演"}],
+            "cast": [{"name": "演员", "character": "角色"}],
+        }
+        with patch(
+            "app.api.portal_requests.services.tmdb_details",
+            new=AsyncMock(return_value={"tmdb_id": 616037, "media_type": "movie", "title": "616037"}),
+        ):
+            response = self.client.post(
+                "/api/v1/requests",
+                json={
+                    "tmdb_id": 616037,
+                    "media_id": "616037",
+                    "media_source": "themoviedb",
+                    "media_type": "movie",
+                    "detail": detail,
+                    "csrf_token": self._login_session(),
+                },
+            )
+        self.assertEqual(response.status_code, 201, response.text)
+        created_id = response.json()["data"]["id"]
+        self.assertEqual(response.json()["data"]["title"], "雷神4")
+        async def read_row():
+            async with SessionLocal() as db:
+                return await db.get(MediaRequest, created_id)
+        row = asyncio.run(read_row())
+        self.assertIsNotNone(row)
+        snapshot = json.loads(row.detail_snapshot)
+        self.assertEqual(snapshot["title"], "雷神4")
+        self.assertEqual(snapshot["poster_url"], detail["poster_url"])
+
+    def test_snapshot_reads_do_not_call_moviepilot(self):
+        self._login_session()
+        async def set_snapshot():
+            async with SessionLocal() as db:
+                row = await db.scalar(
+                    select(MediaRequest).where(MediaRequest.title == "自己的待处理")
+                )
+                row.detail_snapshot = json.dumps({
+                    "tmdb_id": 101,
+                    "media_type": "movie",
+                    "title": "数据库电影",
+                    "poster_url": "https://example.test/poster.jpg",
+                    "overview": "本地快照",
+                }, ensure_ascii=False)
+                await db.commit()
+        asyncio.run(set_snapshot())
+        with patch("app.api.portal_requests.services.moviepilot_details", new=AsyncMock(side_effect=AssertionError("unexpected upstream call"))) as upstream:
+            lists = self.client.get("/api/v1/requests")
+            self.assertEqual(lists.status_code, 200)
+            self.assertEqual(lists.json()["data"]["pending"][0]["title"], "数据库电影")
+            request_id = lists.json()["data"]["pending"][0]["id"]
+            detail = self.client.get(f"/api/v1/requests/{request_id}")
+            self.assertEqual(detail.status_code, 200)
+            self.assertEqual(detail.json()["data"]["poster_url"], "https://example.test/poster.jpg")
+            upstream.assert_not_awaited()
+
+    def test_legacy_detail_is_hydrated_once_then_read_from_database(self):
+        self._login_session()
+        async def request_id():
+            async with SessionLocal() as db:
+                row = await db.scalar(
+                    select(MediaRequest).where(MediaRequest.title == "自己的待处理")
+                )
+                return row.id
+        row_id = asyncio.run(request_id())
+        detail = {
+            "tmdb_id": 101,
+            "media_type": "movie",
+            "title": "旧记录电影",
+            "poster_url": "https://example.test/legacy.jpg",
+            "overview": "回填简介",
+        }
+        with patch("app.api.portal_requests.services.moviepilot_enabled", return_value=True), patch(
+            "app.api.portal_requests.services.moviepilot_details", new=AsyncMock(return_value=detail)
+        ) as upstream:
+            first = self.client.get(f"/api/v1/requests/{row_id}")
+            second = self.client.get(f"/api/v1/requests/{row_id}")
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(first.json()["data"]["title"], "旧记录电影")
+        self.assertEqual(second.json()["data"]["title"], "旧记录电影")
+        self.assertEqual(upstream.await_count, 1)
 
 
 if __name__ == "__main__":

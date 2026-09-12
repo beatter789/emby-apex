@@ -171,6 +171,9 @@
 .portal-detail-hero > * { position: relative; z-index: 1; }
 .portal-detail-poster { width: 130px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 6px; background: var(--surface-hover); }
 .portal-detail-hero{grid-template-columns:240px minmax(0,1fr);min-height:390px;padding:34px 42px;border:0;border-radius:0;background-position:center;background-size:cover}.portal-detail-hero::before{background:linear-gradient(90deg,rgba(9,11,17,.96) 0%,rgba(9,11,17,.72) 44%,rgba(9,11,17,.86) 100%)}.portal-detail-poster{width:240px;border-radius:8px;box-shadow:0 18px 40px #0008}.portal-detail-copy{align-self:end;padding-bottom:18px}.portal-detail-copy h3{font-size:36px;line-height:1.15}.portal-detail-overview{max-width:900px;font-size:15px}.mp-detail-actions{justify-content:flex-start;margin:0;padding:18px 42px;background:#11141d}.portal-media-dialog-panel{padding:0;background:#0d0f14}.portal-dialog-header{padding:18px 42px;margin:0;background:#0d0f14}
+.portal-media-dialog { padding: 0; place-items: stretch; background: #0d0f14; }
+.portal-media-dialog::backdrop { background: #0d0f14; backdrop-filter: none; }
+.portal-media-dialog-panel { width: 100%; height: 100%; max-width: none; max-height: none; border: 0; border-radius: 0; box-shadow: none; }
 .portal-detail-copy { min-width: 0; align-self: center; }
 .portal-detail-copy h3 { margin: 0; overflow-wrap: anywhere; color: var(--text); font-size: 20px; }
 .portal-detail-copy p { margin: 7px 0; color: #d2cde0; font-size: 13px; }
@@ -420,6 +423,29 @@
 @media (max-width: 1200px) {
   .portal-request-workspace .portal-poster-grid,
   .portal-request-workspace .result-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+
+/* Detail is a full MoviePilot-style surface while the portal sidebar remains
+   visible on desktop.  The dialog element is only used as an accessible
+   modal lifecycle wrapper; its panel fills the main content viewport. */
+@media (min-width: 681px) {
+  .portal-request-workspace .portal-media-dialog {
+    inset: 0 0 0 250px;
+    width: calc(100% - 250px);
+    padding: 0;
+    place-items: stretch;
+    background: #101116;
+  }
+  .portal-request-workspace .portal-media-dialog::backdrop { background: transparent; }
+  .portal-request-workspace .portal-media-dialog-panel {
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+    overflow-y: auto;
+    border: 0;
+    border-radius: 0;
+  }
 }
 @media (max-width: 900px) {
   .portal-request-workspace .portal-poster-grid,

@@ -82,6 +82,10 @@ _ADDED_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("library_checked_at", "DATETIME"),
         ("moviepilot_error", "TEXT NOT NULL DEFAULT ''"),
         ("season_numbers", "TEXT NOT NULL DEFAULT '[]'"),
+        ("detail_snapshot", "TEXT NOT NULL DEFAULT '{}'"),
+    ],
+    "media_request_summaries": [
+        ("detail_snapshot", "TEXT NOT NULL DEFAULT '{}'"),
     ],
 }
 

@@ -305,6 +305,7 @@ class MediaRequest(Base):
     library_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     moviepilot_error: Mapped[str] = mapped_column(Text, default="", nullable=False)
     season_numbers: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    detail_snapshot: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
 
 
 class MediaRequestSummary(Base):
@@ -337,6 +338,7 @@ class MediaRequestSummary(Base):
     processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     processed_by: Mapped[str | None] = mapped_column(String(200))
     rejection_reason: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    detail_snapshot: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
 
 
 class PlaybackRecord(Base):

@@ -90,6 +90,17 @@ def _media_request_json(
         "moviepilot_subscribe_state": item.moviepilot_subscribe_state,
         "season_numbers": _json_list(item.season_numbers),
     }
+    # Details are captured at submit time so portal reads remain local and
+    # deterministic.  Keep the denormalized columns above for compatibility,
+    # then overlay the immutable snapshot when it is valid JSON.
+    snapshot = _json_object(getattr(item, "detail_snapshot", ""))
+    if snapshot:
+        payload.update({key: value for key, value in snapshot.items() if not key.startswith("_")})
+        payload["id"] = item.id
+        payload["status"] = item.status
+        payload["library_state"] = item.library_state
+        payload["moviepilot_subscribe_state"] = item.moviepilot_subscribe_state
+        payload["season_numbers"] = _json_list(item.season_numbers)
     is_own = viewer_user_id is None or item.managed_user_id == viewer_user_id
     if is_own:
         payload.update(
@@ -110,6 +121,15 @@ def _json_list(value: str) -> list[object]:
         return []
 
 
+def _json_object(value: str | None) -> dict[str, object]:
+    import json
+    try:
+        data = json.loads(value or "{}")
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
 def _media_request_lists_json(
     lists: dict[str, list[MediaRequest]], *, viewer_user_id: int | None = None
 ) -> dict[str, list[dict[str, object]]]:
@@ -124,4 +144,5 @@ __all__ = [
     "_describe_status",
     "_media_request_json",
     "_media_request_lists_json",
+    "_json_object",
 ]

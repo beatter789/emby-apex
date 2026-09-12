@@ -2503,6 +2503,7 @@ def _summary_from_request(
             row.confirmed_by if terminal_status == "in_library" else row.rejected_by
         ),
         rejection_reason=rejection_reason if rejection_reason is not None else row.rejection_reason,
+        detail_snapshot=getattr(row, "detail_snapshot", "{}") or "{}",
     )
 
 
@@ -2542,6 +2543,7 @@ async def _upsert_request_summary(
         summary.processed_at = processed_at
         summary.processed_by = processed_by
         summary.rejection_reason = rejection_reason
+        summary.detail_snapshot = getattr(row, "detail_snapshot", "{}") or "{}"
     return summary
 
 
@@ -2639,6 +2641,85 @@ def moviepilot_enabled() -> bool:
 def _mp_type(value: str) -> str:
     return "电影" if value == "movie" else "电视剧"
 
+def _mp_people(value: Any, *, with_character: bool = False) -> list[dict[str, Any]]:
+    """Normalize MoviePilot actor/crew variants into small JSON objects."""
+    if isinstance(value, dict):
+        for key in ("cast", "actors", "crew", "directors", "results", "items"):
+            nested = value.get(key)
+            if isinstance(nested, list):
+                value = nested
+                break
+        else:
+            value = list(value.values())
+    if not isinstance(value, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for entry in value:
+        if isinstance(entry, str):
+            name = entry.strip()
+            person = {"name": name} if name else None
+        elif isinstance(entry, dict):
+            name = str(
+                entry.get("name")
+                or entry.get("full_name")
+                or entry.get("original_name")
+                or ""
+            ).strip()
+            if not name:
+                continue
+            person = {
+                "id": entry.get("id") or entry.get("person_id"),
+                "name": name,
+                "profile_url": entry.get("profile_url") or entry.get("profile") or entry.get("profile_path"),
+            }
+            if with_character:
+                person["character"] = entry.get("character") or entry.get("role")
+            person = {key: value for key, value in person.items() if value not in (None, "")}
+        else:
+            continue
+        if person:
+            rows.append(person)
+    return rows
+
+def _mp_seasons(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, dict):
+        value = [
+            ({**entry, "season_number": entry.get("season_number", key)} if isinstance(entry, dict) else {"season_number": key, "episode_count": entry})
+            for key, entry in value.items()
+        ]
+    if not isinstance(value, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for entry in value:
+        if not isinstance(entry, dict):
+            continue
+        number = entry.get("season_number")
+        if number is None:
+            number = entry.get("number")
+        if number is None:
+            number = entry.get("season")
+        try:
+            number = int(number)
+        except (TypeError, ValueError):
+            continue
+        count = entry.get("episode_count") or entry.get("episodes") or entry.get("number_of_episodes") or 0
+        try:
+            count = int(count)
+        except (TypeError, ValueError):
+            count = 0
+        poster = entry.get("poster_url") or entry.get("poster_path") or entry.get("poster")
+        if isinstance(poster, str) and poster.startswith("/"):
+            poster = str(settings_store.current().moviepilot_url or "").rstrip("/") + poster
+        rows.append({
+            "season_number": number,
+            "name": str(entry.get("name") or entry.get("title") or f"第 {number} 季"),
+            "episode_count": count,
+            "overview": str(entry.get("overview") or "") or None,
+            "air_date": str(entry.get("air_date") or entry.get("release_date") or "") or None,
+            "poster_url": poster or None,
+        })
+    return rows
+
 def _normalize_mp(item: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(item, dict): return None
     # Some MoviePilot builds wrap media details in ``media_info`` or ``media``.
@@ -2689,8 +2770,16 @@ def _normalize_mp(item: dict[str, Any]) -> dict[str, Any] | None:
     if isinstance(poster, str) and poster.startswith("/"):
         base = str(settings_store.current().moviepilot_url or "").rstrip("/")
         poster = base + poster
-    seasons = item.get("number_of_seasons") or item.get("seasons")
-    episodes = item.get("number_of_episodes") or item.get("episodes") or item.get("total_episode")
+    raw_seasons = item.get("number_of_seasons")
+    if raw_seasons is None or isinstance(raw_seasons, (list, dict)):
+        raw_seasons = item.get("season_count")
+    raw_episodes = item.get("number_of_episodes")
+    if raw_episodes is None or isinstance(raw_episodes, (list, dict)):
+        raw_episodes = item.get("total_episode")
+    if raw_episodes is None or isinstance(raw_episodes, (list, dict)):
+        raw_episodes = item.get("episode_count")
+    seasons = raw_seasons
+    episodes = raw_episodes
     try: seasons = int(seasons) if seasons is not None else None
     except (TypeError, ValueError): seasons = None
     try: episodes = int(episodes) if episodes is not None else None
@@ -2698,15 +2787,51 @@ def _normalize_mp(item: dict[str, Any]) -> dict[str, Any] | None:
     backdrop = str(item.get("backdrop_url") or item.get("backdrop_path") or item.get("backdrop") or "").strip()
     if backdrop.startswith("/"):
         backdrop = str(settings_store.current().moviepilot_url or "").rstrip("/") + backdrop
-    season_info = item.get("season_info") or item.get("seasons_info") or item.get("seasons_detail") or []
-    if isinstance(season_info, dict):
-        season_info = [dict(v, season_number=v.get("season_number", k)) if isinstance(v, dict) else {"season_number": k, "episode_count": v} for k, v in season_info.items()]
-    if not isinstance(season_info, list): season_info = []
-    episodes_info = item.get("episodes_info") or item.get("episode_info") or {}
-    if not isinstance(episodes_info, (dict, list)): episodes_info = {}
-    directors = item.get("directors") or item.get("crew") or []
-    cast = item.get("cast") or item.get("actors") or item.get("credits") or []
-    return {"media_source": source, "media_id": mid, "tmdb_id": int(mid) if source in {"tmdb", "themoviedb"} and mid.isdigit() else 0, "media_type": media_type, "title": title, "original_title": str(item.get("original_title") or item.get("original_name") or title), "year": year, "overview": str(item.get("overview") or ""), "poster_url": str(poster), "backdrop_url": backdrop or None, "rating": item.get("vote_average") or item.get("rating"), "status": item.get("status"), "seasons": seasons, "episodes": episodes, "genres": item.get("genres") if isinstance(item.get("genres"), list) else [], "season_info": season_info, "episodes_info": episodes_info, "directors": directors if isinstance(directors, list) else [], "cast": cast if isinstance(cast, list) else []}
+    season_info = _mp_seasons(item.get("season_info") or item.get("seasons_info") or item.get("seasons_detail") or item.get("seasons") or [])
+    if seasons is None and season_info:
+        seasons = len(season_info)
+    if episodes is None and season_info:
+        episodes = sum(int(row.get("episode_count") or 0) for row in season_info)
+    episodes_info = item.get("episodes_info") or item.get("episode_info")
+    if not isinstance(episodes_info, (dict, list)):
+        raw_episodes = item.get("episodes")
+        episodes_info = raw_episodes if isinstance(raw_episodes, (dict, list)) else {}
+    raw_genres = item.get("genres") or item.get("genre") or []
+    genres = []
+    if isinstance(raw_genres, list):
+        genres = [str(g.get("name") or g.get("title") or "").strip() if isinstance(g, dict) else str(g).strip() for g in raw_genres]
+        genres = [g for g in genres if g]
+    raw_crew = item.get("directors") or item.get("crew") or []
+    if isinstance(raw_crew, dict) and isinstance(raw_crew.get("crew"), list):
+        raw_crew = raw_crew["crew"]
+    directors = _mp_people(raw_crew)
+    if isinstance(raw_crew, list) and any(isinstance(entry, dict) and entry.get("job") for entry in raw_crew):
+        directors = _mp_people([entry for entry in raw_crew if not isinstance(entry, dict) or str(entry.get("job") or "").casefold() == "director"])
+    cast = _mp_people(item.get("cast") or item.get("actors") or item.get("credits") or [], with_character=True)
+    return {
+        "media_source": source,
+        "media_id": mid,
+        "tmdb_id": int(mid) if source in {"tmdb", "themoviedb"} and mid.isdigit() else 0,
+        "media_type": media_type,
+        "title": title,
+        "original_title": str(item.get("original_title") or item.get("original_name") or title),
+        "year": year,
+        "overview": str(item.get("overview") or ""),
+        "poster_url": str(poster),
+        "backdrop_url": backdrop or None,
+        "release_date": item.get("release_date") or item.get("first_air_date"),
+        "tagline": item.get("tagline"),
+        "rating": item.get("vote_average") or item.get("rating"),
+        "runtime_minutes": item.get("runtime_minutes") or item.get("runtime"),
+        "status": item.get("status"),
+        "seasons": seasons,
+        "episodes": episodes,
+        "genres": genres,
+        "season_info": season_info,
+        "episodes_info": episodes_info,
+        "directors": directors,
+        "cast": cast,
+    }
 
 async def search_moviepilot(query: str, media_type: str | None = None) -> list[dict[str, Any]]:
     try:
@@ -2737,6 +2862,36 @@ async def moviepilot_details(media_source: str, media_id: str, media_type: str |
         async with MoviePilotClient() as client: row = await client.detail(media_source, media_id, _mp_type(media_type) if media_type in MEDIA_TYPES else None)
     except MoviePilotError as exc: raise RegistrationError(str(exc)) from exc
     result = _normalize_mp(row) or {"media_source": media_source, "media_id": media_id, "tmdb_id": int(media_id) if str(media_id).isdigit() else 0, "media_type": media_type or "movie", "title": media_id}
+    # MoviePilot installations can return a compact identity-only payload.
+    # Enrich that response once from TMDB when a numeric TMDB identity is
+    # available, then keep the merged result in the caller's snapshot.
+    normalized_type = result.get("media_type") or media_type or "movie"
+    numeric_id = int(result.get("tmdb_id") or 0)
+    placeholder_title = not str(result.get("title") or "").strip() or str(result.get("title") or "").strip().isdigit()
+    needs_tmdb = numeric_id > 0 and normalized_type in MEDIA_TYPES and (
+        placeholder_title
+        or not result.get("poster_url")
+        or not result.get("overview")
+        or (normalized_type == "tv" and not result.get("season_info"))
+    )
+    if needs_tmdb:
+        try:
+            async with TmdbClient() as client:
+                tmdb = await client.details(normalized_type, numeric_id)
+        except Exception:
+            tmdb = {}
+        if tmdb:
+            merged = dict(tmdb)
+            for key, value in result.items():
+                if value in (None, "", [], {}):
+                    continue
+                if key == "title" and placeholder_title:
+                    continue
+                merged[key] = value
+            result = merged
+            result["media_source"] = media_source
+            result["media_id"] = str(media_id)
+            result["tmdb_id"] = numeric_id
     try:
         async with MoviePilotClient() as client:
             value = await client.exists(mtype=_mp_type(result["media_type"]), media_source=media_source, media_id=media_id, title=result.get("title", ""), year=result.get("year"))
@@ -2823,6 +2978,7 @@ async def create_media_request(
     media_source: str = "tmdb",
     media_id: str = "",
     seasons: list[int] | None = None,
+    detail_override: dict[str, Any] | None = None,
 ) -> MediaRequest:
     # MoviePilot V3 uses ``themoviedb`` as the provider identifier.  Accept
     # legacy Apex ``tmdb`` values from older clients while persisting one
@@ -2876,6 +3032,16 @@ async def create_media_request(
         raise RegistrationError("你已经求过这部作品，请勿重复提交")
 
     detail = await tmdb_details(media_type, tmdb_id) if not moviepilot_enabled() else await moviepilot_details(media_source, media_id or str(tmdb_id), media_type)
+    supplied = _normalize_mp(detail_override or {}) if isinstance(detail_override, dict) else None
+    if supplied:
+        # Search results already contain useful metadata.  Use it to repair a
+        # compact/empty MoviePilot detail response without another upstream
+        # lookup, while keeping richer fields from the detail response.
+        for key, value in supplied.items():
+            current = detail.get(key)
+            invalid = current in (None, "", [], {}) or (key == "title" and str(current).strip().isdigit())
+            if invalid and value not in (None, "", [], {}):
+                detail[key] = value
     server = await db.get(Server, user.server_id)
     request_row = MediaRequest(
         server_id=user.server_id,
@@ -2892,6 +3058,15 @@ async def create_media_request(
         media_source=media_source,
         media_id=media_id or str(tmdb_id),
         season_numbers=json.dumps(seasons or [], ensure_ascii=False),
+        detail_snapshot=json.dumps(
+            {key: detail.get(key) for key in (
+                "tmdb_id", "media_source", "media_id", "media_type", "title",
+                "original_title", "year", "overview", "poster_url", "backdrop_url",
+                "release_date", "tagline", "status", "rating", "runtime_minutes",
+                "genres", "directors", "cast", "seasons", "episodes",
+                "season_info", "episodes_info",
+            ) if detail.get(key) is not None}, ensure_ascii=False
+        ),
         library_state="unknown",
     )
     if moviepilot_enabled():
@@ -2993,6 +3168,9 @@ async def portal_media_requests(
                 confirmed_by=summary.processed_by,
                 rejection_reason="",
                 poster_error="",
+                media_source="themoviedb",
+                media_id=str(summary.tmdb_id),
+                detail_snapshot=summary.detail_snapshot or "{}",
             )
         )
         existing_keys.add(key)
