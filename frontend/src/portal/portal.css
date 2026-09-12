@@ -170,6 +170,7 @@
 .portal-detail-hero::before { position: absolute; inset: 0; background: rgba(19, 17, 28, .72); content: ''; }
 .portal-detail-hero > * { position: relative; z-index: 1; }
 .portal-detail-poster { width: 130px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 6px; background: var(--surface-hover); }
+.portal-detail-hero{grid-template-columns:240px minmax(0,1fr);min-height:390px;padding:34px 42px;border:0;border-radius:0;background-position:center;background-size:cover}.portal-detail-hero::before{background:linear-gradient(90deg,rgba(9,11,17,.96) 0%,rgba(9,11,17,.72) 44%,rgba(9,11,17,.86) 100%)}.portal-detail-poster{width:240px;border-radius:8px;box-shadow:0 18px 40px #0008}.portal-detail-copy{align-self:end;padding-bottom:18px}.portal-detail-copy h3{font-size:36px;line-height:1.15}.portal-detail-overview{max-width:900px;font-size:15px}.mp-detail-actions{justify-content:flex-start;margin:0;padding:18px 42px;background:#11141d}.portal-media-dialog-panel{padding:0;background:#0d0f14}.portal-dialog-header{padding:18px 42px;margin:0;background:#0d0f14}
 .portal-detail-copy { min-width: 0; align-self: center; }
 .portal-detail-copy h3 { margin: 0; overflow-wrap: anywhere; color: var(--text); font-size: 20px; }
 .portal-detail-copy p { margin: 7px 0; color: #d2cde0; font-size: 13px; }
@@ -212,8 +213,8 @@
   .portal-media-dialog { padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom)); place-items: stretch; }
   .portal-media-dialog-panel { width: 100%; max-height: calc(100dvh - max(16px, env(safe-area-inset-top) + env(safe-area-inset-bottom) + 16px)); padding: 14px; border-radius: 10px; }
   .portal-dialog-header h2 { font-size: 18px; }
-  .portal-detail-hero { grid-template-columns: 84px minmax(0, 1fr); gap: 12px; padding: 12px; }
-  .portal-detail-poster { width: 84px; }
+  .portal-detail-hero { grid-template-columns: 120px minmax(0, 1fr); gap: 12px; padding: 18px; min-height:220px; }
+  .portal-detail-poster { width: 120px; }
   .portal-detail-copy h3 { font-size: 17px; }
   .portal-detail-facts { grid-template-columns: 1fr; gap: 8px; }
   .portal-cast-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
@@ -315,4 +316,11 @@
 .subscribe-card-image{position:relative;aspect-ratio:3/2;overflow:hidden;background:#222532}.subscribe-card-image .poster{width:100%;height:100%;object-fit:cover}.subscribe-card-content{display:grid;gap:6px;padding:12px 14px}.subscribe-card-content h3{margin:0;color:#fff;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.subscribe-card-meta{margin:0;color:#a9a6b8;font-size:12px}.subscribe-state-pill{display:inline-flex;width:max-content;padding:4px 9px;border-radius:999px;background:#443873;color:#ddd4ff;font-size:11px}.subscribe-state-pill.ok{background:#174d3d;color:#9ef1ce}.subscribe-state-pill.bad{background:#572d38;color:#ffc6d0}.subscribe-card-content .hint{margin:0;font-size:11px}.mp-season-picker{margin-top:12px}.mp-season-picker h3{margin:0 0 10px;color:#fff}.season-list{display:grid;gap:8px}.season-card{padding:10px 12px;border:1px solid #2b2e3b;border-radius:10px;background:#151720}.season-card-main{display:flex;align-items:center;gap:10px}.season-card-main input{width:18px;height:18px}.season-poster-placeholder{display:grid;place-items:center;width:42px;height:58px;border-radius:5px;background:#2b2e3b;color:#bca8ff;font-size:12px;font-weight:700}.season-card-copy{display:grid;gap:3px;min-width:0}.season-card-copy strong{color:#fff}.season-card-copy span{color:#aaa7b8;font-size:12px}.season-expand{margin-left:auto;padding:6px 10px;border:1px solid #514a68;border-radius:7px;background:transparent;color:#c6bbff;cursor:pointer}.season-overview{margin:8px 0 0;color:#bdb9ca;font-size:12px;line-height:1.5}.mp-season-picker .episode-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px;padding:10px 0 0}.mp-season-picker .episode-list>div{display:flex;gap:8px;padding:7px 9px;border-radius:6px;background:#202330;color:#c8c5d5;font-size:12px}.mp-season-picker .episode-list b{color:#b59cff}
 @media(max-width:680px){.mp-subscribe-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.mp-subscribe-grid .portal-request-item{min-height:250px}.subscribe-card-content{padding:9px 10px}.subscribe-card-content h3{font-size:14px}.season-card-main{gap:7px}.season-poster-placeholder{width:34px;height:48px;font-size:10px}.season-expand{padding:5px 7px;font-size:11px}}
 @media (max-width:680px){.portal-workspace{display:block}.portal-sidebar{display:none}.portal-media-dialog-panel{padding:16px 14px}}
+
+/* MoviePilot V3 detail surface final overrides (keep above legacy portal rules). */
+.portal-request-workspace .portal-media-dialog-panel{padding:0;background:#0d0f14}
+.portal-request-workspace .portal-dialog-header{padding:18px 42px;margin:0}
+.portal-request-workspace .portal-detail-hero{grid-template-columns:240px minmax(0,1fr);min-height:390px;padding:34px 42px;border:0;border-radius:0}
+.portal-request-workspace .portal-detail-poster{width:240px}
+@media(max-width:680px){.portal-request-workspace .portal-dialog-header{padding:14px}.portal-request-workspace .portal-detail-hero{grid-template-columns:120px minmax(0,1fr);min-height:220px;padding:18px}.portal-request-workspace .portal-detail-poster{width:120px}}
 .season-state-pill{margin-left:auto;padding:5px 11px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.season-state-pill.ok{background:#183818;color:#8ee35f}.season-state-pill.pending{background:#3d2e18;color:#f5c45f}.season-state-pill.missing{background:#3a202b;color:#ff7993}.season-heart{font-size:26px;line-height:1;color:#f2c000;margin-left:4px}.season-card-main{min-height:52px}.season-episode-count{display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;background:#2c2f3b;color:#d4d1de}.mp-subscribe-grid .subscribe-card-image{aspect-ratio:2/3}.mp-subscribe-grid .subscribe-card-content{min-height:108px}

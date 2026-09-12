@@ -2641,17 +2641,49 @@ def _mp_type(value: str) -> str:
 
 def _normalize_mp(item: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(item, dict): return None
+    # Some MoviePilot builds wrap media details in ``media_info`` or ``media``.
+    # Flatten that payload while retaining top-level fields such as existence
+    # and subscription metadata.
+    nested = item.get("media_info") or item.get("media") or item.get("result")
+    if isinstance(nested, dict):
+        item = {**item, **nested}
     source = str(item.get("media_source") or item.get("source") or "themoviedb").strip()
     if source == "tmdb": source = "themoviedb"
-    mid = str(item.get("media_id") or item.get("id") or "").strip()
-    title = str(item.get("title") or item.get("name") or item.get("original_title") or "").strip()
+    # MoviePilot's ``MediaInfo`` payloads are not fully uniform across V3
+    # releases.  Details often expose ``tmdb_id`` without ``media_id`` and
+    # some search responses use ``title_year``/``original_name``.  Always
+    # derive a stable media id and human title before falling back to the id.
+    mid = str(
+        item.get("media_id")
+        or item.get("id")
+        or item.get("tmdb_id")
+        or item.get("tvdb_id")
+        or item.get("imdb_id")
+        or ""
+    ).strip()
+    title = str(
+        item.get("title")
+        or item.get("name")
+        or item.get("original_title")
+        or item.get("original_name")
+        or item.get("title_year")
+        or ""
+    ).strip()
     if not mid or not title: return None
     typ = str(item.get("type") or item.get("type_name") or item.get("media_type") or "").lower()
     media_type = "tv" if typ in {"tv", "电视剧", "series"} else "movie"
     year = item.get("year") or item.get("release_date") or item.get("first_air_date")
     try: year = int(str(year)[:4]) if year else None
     except (TypeError, ValueError): year = None
-    poster = item.get("poster_url") or item.get("poster_path") or item.get("poster") or ""
+    poster = (
+        item.get("poster_url")
+        or item.get("poster_path")
+        or item.get("poster")
+        or item.get("image")
+        or item.get("cover")
+        or item.get("cover_url")
+        or ""
+    )
     if isinstance(poster, str) and poster.startswith("/"):
         base = str(settings_store.current().moviepilot_url or "").rstrip("/")
         poster = base + poster
@@ -2661,10 +2693,10 @@ def _normalize_mp(item: dict[str, Any]) -> dict[str, Any] | None:
     except (TypeError, ValueError): seasons = None
     try: episodes = int(episodes) if episodes is not None else None
     except (TypeError, ValueError): episodes = None
-    backdrop = str(item.get("backdrop_url") or item.get("backdrop_path") or "").strip()
+    backdrop = str(item.get("backdrop_url") or item.get("backdrop_path") or item.get("backdrop") or "").strip()
     if backdrop.startswith("/"):
         backdrop = str(settings_store.current().moviepilot_url or "").rstrip("/") + backdrop
-    season_info = item.get("season_info") or item.get("seasons_info") or item.get("seasons_detail") or []
+    season_info = item.get("season_info") or item.get("seasons_info") or item.get("seasons_detail") or item.get("seasons") or []
     if not isinstance(season_info, list): season_info = []
     episodes_info = item.get("episodes_info") or item.get("episode_info") or {}
     if not isinstance(episodes_info, dict): episodes_info = {}

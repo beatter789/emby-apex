@@ -286,11 +286,22 @@ async function loadLists(): Promise<void> {
   listsLoading.value = true;
   try {
     const response = await getApi<RequestLists>('/requests');
-    lists.value = {
+    const nextLists = {
       pending: response.data?.pending || [],
       in_library: response.data?.in_library || [],
       rejected: response.data?.rejected || [],
     };
+    // Repair legacy rows created before MoviePilot metadata was persisted.
+    // Details are fetched only for rows missing a title or artwork.
+    const all = [...nextLists.pending, ...nextLists.in_library, ...nextLists.rejected];
+    await Promise.all(all.filter((item) => !item.poster_url && !item.poster_local_url || !item.title || item.title === String(item.media_id || item.tmdb_id)).slice(0, 12).map(async (item) => {
+      try {
+        const id = item.media_id || String(item.tmdb_id);
+        const detail = await getApi<MediaItem>(`/requests/tmdb/${encodeURIComponent(item.media_type)}/${encodeURIComponent(id)}?media_source=${encodeURIComponent(item.media_source || 'themoviedb')}`);
+        Object.assign(item, detail.data || {});
+      } catch { /* keep the persisted row visible */ }
+    }));
+    lists.value = nextLists;
     listsRequestSucceeded.value = true;
   } catch (error) {
     handleError(error, '求片列表加载失败，请稍后重试。');
@@ -354,7 +365,18 @@ async function select(item: MediaItem): Promise<void> {
   detailLoading.value = true;
   try {
     const response = await getApi<MediaItem>(`/requests/tmdb/${encodeURIComponent(item.media_type)}/${encodeURIComponent(String(item.media_id || item.tmdb_id))}?media_source=${encodeURIComponent(item.media_source || 'themoviedb')}`);
-    const merged = { ...item, ...(response.data || {}) };
+    const detail: MediaItem = response.data || ({} as MediaItem);
+    // Keep the rich search card metadata when a MoviePilot build returns a
+    // sparse detail object (some versions echo only media_id/title).
+    const merged = {
+      ...item,
+      ...detail,
+      title: detail.title && detail.title !== String(item.media_id || item.tmdb_id) ? detail.title : item.title,
+      original_title: detail.original_title || item.original_title,
+      poster_url: detail.poster_url || item.poster_url,
+      backdrop_url: detail.backdrop_url || item.backdrop_url,
+      overview: detail.overview || item.overview,
+    };
     selected.value = merged;
     if (merged.media_type === 'tv' && !selectedSeasons.value.length) selectedSeasons.value = seasonEntries.value.map(s => s.number);
   } catch (error) {
