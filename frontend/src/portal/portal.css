@@ -711,3 +711,44 @@
   .portal-request-workspace .mp-detail-facts { order: -1; }
   .portal-request-workspace .portal-cast-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+/* MoviePilot V3 episode expansion panel */
+.portal-request-workspace .mp-season-picker .episode-list>div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:12px 16px;border-bottom:1px solid #2b303b;border-radius:0;background:transparent;color:#d8d8e8}
+.portal-request-workspace .mp-season-picker .episode-list>div:last-child{border-bottom:0}
+.portal-request-workspace .mp-season-picker .episode-list h4{grid-column:1;margin:0;color:#f1f1fa;font-size:15px;font-weight:500;line-height:1.35}
+.portal-request-workspace .mp-season-picker .episode-list time{grid-column:2;grid-row:1;color:#a9adba;font-size:13px;white-space:nowrap}
+.portal-request-workspace .mp-season-picker .episode-list .episode-overview{grid-column:1 / -1;margin:3px 0 0;color:#9ea3b0;font-size:13px;line-height:1.5}
+.portal-request-workspace .mp-season-picker .episode-list small{padding:14px 16px;color:#9ea3b0}
+@media(max-width:680px){.portal-request-workspace .mp-season-picker .episode-list>div{padding:11px 12px}.portal-request-workspace .mp-season-picker .episode-list h4{font-size:14px}.portal-request-workspace .mp-season-picker .episode-list time{font-size:12px}}
+
+/* Match MoviePilot V3 responsive breakpoints for the detail view. */
+.portal-request-workspace .mp-detail-dialog .mp-detail-hero{display:grid;grid-template-columns:1fr;align-items:center;justify-items:center;min-height:0;padding:32px 1rem 28px;text-align:center;background-position:center top;background-size:cover}
+.portal-request-workspace .mp-detail-dialog .mp-detail-hero .portal-detail-poster{width:8rem;margin:0;box-shadow:0 1px 3px #0003,0 1px 2px -1px #0003}
+.portal-request-workspace .mp-detail-dialog .mp-detail-hero .portal-detail-copy{width:100%;padding:0;text-align:center}
+.portal-request-workspace .mp-detail-dialog .mp-detail-hero .portal-detail-copy h3{font-size:1.5rem;line-height:2rem}
+.portal-request-workspace .mp-detail-dialog .mp-detail-columns{grid-template-columns:minmax(0,1fr);gap:24px;padding-top:24px}
+.portal-request-workspace .mp-detail-dialog .mp-detail-facts{width:100%;margin-top:24px}
+.portal-request-workspace .mp-detail-dialog .mp-detail-main{min-width:0}
+@media (min-width:640px){
+ .portal-request-workspace .mp-detail-dialog .mp-detail-hero{padding-inline:2rem}
+ .portal-request-workspace .mp-detail-dialog .mp-detail-hero .portal-detail-poster{width:11rem;box-shadow:0 25px 50px -12px #0004}
+ .portal-request-workspace .mp-detail-dialog .mp-detail-hero .portal-detail-copy h3{font-size:1.75rem;line-height:2.25rem}
+ .portal-request-workspace .mp-detail-dialog .mp-detail-hero .detail-media-attributes{justify-content:center;font-size:.875rem;line-height:1.25rem}
+}
+@media (min-width:1024px){
+ .portal-request-workspace .mp-detail-dialog .mp-detail-hero{grid-template-columns:11rem minmax(0,1fr);justify-items:stretch;align-items:end;gap:1.5rem;text-align:left;padding:32px 3.6vw}
+ .portal-request-workspace .mp-detail-dialog .mp-detail-hero .portal-detail-copy{text-align:left}
+ .portal-request-workspace .mp-detail-dialog .mp-detail-hero .detail-media-attributes{justify-content:flex-start}
+ .portal-request-workspace .mp-detail-dialog .mp-detail-columns{grid-template-columns:minmax(0,1fr) 20rem;gap:2rem}
+ .portal-request-workspace .mp-detail-dialog .mp-detail-facts{width:20rem;margin-top:0}
+}
+@media (min-width:1280px){
+ .portal-request-workspace .mp-detail-dialog .mp-detail-hero{grid-template-columns:13rem minmax(0,1fr);padding-inline:3.6vw}
+ .portal-request-workspace .mp-detail-dialog .mp-detail-hero .portal-detail-poster{width:13rem}
+ .portal-request-workspace .mp-detail-dialog .mp-detail-hero .portal-detail-copy h3{font-size:2.25rem;line-height:2.5rem}
+}
+@media (max-width:640px){
+ .portal-request-workspace .mp-detail-dialog .mp-detail-hero{padding:24px 1rem 20px}
+ .portal-request-workspace .mp-detail-dialog .mp-detail-hero .portal-detail-poster{width:8rem}
+ .portal-request-workspace .mp-detail-dialog .mp-detail-columns{grid-template-columns:1fr}
+}

@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .. import services
 from ..config import get_settings
 from ..db import get_session
-from ..models import ManagedUser, MediaRequest
+from ..models import ManagedUser, MediaRequest, MediaRequestSummary
 from ..portal_routes import (
     _ensure_latest_runtime_settings,
     _json_object,
@@ -150,7 +150,37 @@ async def request_detail_api(
     user = await _portal_api_user(request, db)
     if user is None:
         return _error("未登录或登录已失效", status_code=401)
-    item = await db.get(MediaRequest, request_id)
+    item = await db.get(MediaRequest, request_id) if request_id > 0 else None
+    summary_row = None
+    if item is None and request_id < 0:
+        summary = await db.get(MediaRequestSummary, abs(request_id))
+        summary_row = summary
+        if summary is not None:
+            # Terminal summaries are intentionally exposed through the same
+            # snapshot serializer as live requests.  They carry no private
+            # note or user ownership and remain visible only on their server.
+            item = MediaRequest(
+                id=-summary.id,
+                server_id=summary.server_id,
+                managed_user_id=user.id,
+                tmdb_id=summary.tmdb_id,
+                media_type=summary.media_type,
+                title=summary.title,
+                original_title=summary.original_title,
+                year=summary.year,
+                overview=summary.overview,
+                poster_url=summary.poster_url,
+                poster_local_path=summary.poster_local_path,
+                note="",
+                status=summary.status,
+                confirmed_at=summary.processed_at if summary.status == "in_library" else None,
+                confirmed_by=summary.processed_by if summary.status == "in_library" else None,
+                rejection_reason=summary.rejection_reason,
+                poster_error="",
+                media_source="themoviedb",
+                media_id=str(summary.tmdb_id),
+                detail_snapshot=summary.detail_snapshot or "{}",
+            )
     if item is None or item.server_id != user.server_id:
         return _error("求片记录不存在", status_code=404)
     if item.managed_user_id != user.id and item.status != "in_library":
@@ -180,6 +210,13 @@ async def request_detail_api(
             item.overview = str(detail.get("overview") or item.overview or "")
             item.poster_url = str(detail.get("poster_url") or item.poster_url or "")
             item.detail_snapshot = json.dumps(snapshot, ensure_ascii=False)
+            if summary_row is not None:
+                summary_row.detail_snapshot = item.detail_snapshot
+                summary_row.title = item.title
+                summary_row.original_title = item.original_title
+                summary_row.year = item.year
+                summary_row.overview = item.overview
+                summary_row.poster_url = item.poster_url
         else:
             item.detail_snapshot = json.dumps({"_hydration_attempted": True}, ensure_ascii=False)
         await db.commit()
@@ -194,7 +231,34 @@ async def request_season_api(
     user = await _portal_api_user(request, db)
     if user is None:
         return _error("未登录或登录已失效", status_code=401)
-    item = await db.get(MediaRequest, request_id)
+    item = await db.get(MediaRequest, request_id) if request_id > 0 else None
+    summary_row = None
+    if item is None and request_id < 0:
+        summary = await db.get(MediaRequestSummary, abs(request_id))
+        summary_row = summary
+        if summary is not None:
+            item = MediaRequest(
+                id=-summary.id,
+                server_id=summary.server_id,
+                managed_user_id=user.id,
+                tmdb_id=summary.tmdb_id,
+                media_type=summary.media_type,
+                title=summary.title,
+                original_title=summary.original_title,
+                year=summary.year,
+                overview=summary.overview,
+                poster_url=summary.poster_url,
+                poster_local_path=summary.poster_local_path,
+                note="",
+                status=summary.status,
+                confirmed_at=summary.processed_at if summary.status == "in_library" else None,
+                confirmed_by=summary.processed_by if summary.status == "in_library" else None,
+                rejection_reason=summary.rejection_reason,
+                poster_error="",
+                media_source="themoviedb",
+                media_id=str(summary.tmdb_id),
+                detail_snapshot=summary.detail_snapshot or "{}",
+            )
     if item is None or item.server_id != user.server_id:
         return _error("求片记录不存在", status_code=404)
     if item.managed_user_id != user.id and item.status != "in_library":
@@ -204,10 +268,21 @@ async def request_season_api(
     snapshot = _json_object(item.detail_snapshot)
     episodes = snapshot.get("episodes_info")
     if isinstance(episodes, dict) and isinstance(episodes.get(str(season_number)), list):
-        return _ok(episodes[str(season_number)])
+        cached_rows = episodes[str(season_number)]
+        # Older snapshots only contained episode numbers.  Treat those as
+        # incomplete so the first expansion can hydrate the real names from
+        # MoviePilot/TMDB and persist them for subsequent visits.
+        if cached_rows and all(
+            isinstance(row, dict) and str(row.get("name") or row.get("title") or "").strip()
+            for row in cached_rows
+        ):
+            return _ok(cached_rows)
     if isinstance(episodes, list):
         rows = [row for row in episodes if isinstance(row, dict) and int(row.get("season_number", row.get("season", 1)) or 1) == season_number]
-        if rows:
+        if rows and all(
+            isinstance(row, dict) and str(row.get("name") or row.get("title") or "").strip()
+            for row in rows
+        ):
             return _ok(rows)
     if not item.tmdb_id:
         snapshot.setdefault("episodes_info", {})
@@ -215,6 +290,8 @@ async def request_season_api(
             snapshot["episodes_info"] = {}
         snapshot["episodes_info"][str(season_number)] = []
         item.detail_snapshot = json.dumps(snapshot, ensure_ascii=False)
+        if summary_row is not None:
+            summary_row.detail_snapshot = item.detail_snapshot
         await db.commit()
         return _ok([])
     await _ensure_latest_runtime_settings(db)
@@ -237,6 +314,8 @@ async def request_season_api(
         snapshot["episodes_info"] = {}
     snapshot["episodes_info"][str(season_number)] = rows
     item.detail_snapshot = json.dumps(snapshot, ensure_ascii=False)
+    if summary_row is not None:
+        summary_row.detail_snapshot = item.detail_snapshot
     await db.commit()
     return _ok(rows)
 

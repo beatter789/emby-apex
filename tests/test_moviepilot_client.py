@@ -44,6 +44,25 @@ class MoviePilotEpisodeApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(request.await_args_list[1].args, ("GET", "tmdb/325709/1"))
         self.assertEqual(request.await_args_list[1].kwargs, {"params": {"episode_group": "group-1"}})
 
+    async def test_delete_subscription_uses_v3_delete_endpoint(self):
+        client = object.__new__(MoviePilotClient)
+        request = AsyncMock(return_value=None)
+        client._request = request
+
+        await client.delete_subscription("42")
+
+        request.assert_awaited_once_with("DELETE", "subscribe/42")
+
+    async def test_delete_subscription_rejects_invalid_ids(self):
+        client = object.__new__(MoviePilotClient)
+        client._request = AsyncMock()
+
+        with self.assertRaisesRegex(Exception, "订阅 ID 无效"):
+            await client.delete_subscription(0)
+        with self.assertRaisesRegex(Exception, "订阅 ID 无效"):
+            await client.delete_subscription("not-an-id")
+        client._request.assert_not_awaited()
+
 
 if __name__ == "__main__":
     unittest.main()

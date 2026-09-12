@@ -263,3 +263,19 @@ class MoviePilotClient:
 
     async def pause(self, subscribe_id: int) -> None:
         await self._request("PUT", f"subscribe/status/{subscribe_id}", params={"state": "S"})
+
+    async def delete_subscription(self, subscribe_id: int) -> None:
+        """Delete a MoviePilot subscription by id.
+
+        MoviePilot V3 exposes subscription deletion at ``DELETE
+        /api/v1/subscribe/{id}``.  Keep this operation separate from
+        :meth:`pause` so callers can explicitly limit cleanup to subscriptions
+        that were created and paused by Apex.
+        """
+        try:
+            identifier = int(subscribe_id)
+        except (TypeError, ValueError) as exc:
+            raise MoviePilotError("MoviePilot 订阅 ID 无效") from exc
+        if identifier <= 0:
+            raise MoviePilotError("MoviePilot 订阅 ID 无效")
+        await self._request("DELETE", f"subscribe/{identifier}")

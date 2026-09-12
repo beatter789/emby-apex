@@ -3128,7 +3128,7 @@ async def create_media_request(
                 "original_title", "year", "overview", "poster_url", "backdrop_url",
                 "release_date", "tagline", "status", "rating", "runtime_minutes",
                 "genres", "directors", "producers", "cast", "seasons", "episodes",
-                "season_info", "episodes_info",
+                "season_info", "episodes_info", "episode_groups", "episode_group",
             ) if detail.get(key) is not None}, ensure_ascii=False
         ),
         library_state="unknown",
@@ -3215,7 +3215,10 @@ async def portal_media_requests(
         # 复用 MediaRequest 形状供管理端 API 序列化使用。
         library_unique.append(
             MediaRequest(
-                id=0,
+                # Use a negative id to keep terminal summaries addressable by
+                # the portal detail endpoint without colliding with real
+                # MediaRequest primary keys.
+                id=-summary.id,
                 server_id=summary.server_id,
                 managed_user_id=user.id,
                 tmdb_id=summary.tmdb_id,
@@ -3460,6 +3463,77 @@ async def confirm_media_request_group(
     return len(rows)
 
 
+def _paused_moviepilot_subscription_ids(row: MediaRequest) -> list[int]:
+    """Read the subscription ids Apex created and paused for one request."""
+    if str(row.moviepilot_subscribe_state or "").strip().upper() != "S":
+        return []
+    try:
+        raw_ids = json.loads(row.moviepilot_subscribe_ids or "[]")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    if not isinstance(raw_ids, list):
+        raw_ids = [raw_ids]
+    ids: list[int] = []
+    for value in raw_ids:
+        try:
+            subscribe_id = int(value)
+        except (TypeError, ValueError):
+            continue
+        if subscribe_id > 0 and subscribe_id not in ids:
+            ids.append(subscribe_id)
+    return ids
+
+
+async def _delete_paused_moviepilot_subscriptions(
+    rows: list[MediaRequest],
+) -> dict[int, tuple[set[int], list[str]]]:
+    """Delete only Apex-created paused subscriptions after a rejection.
+
+    The result maps each request id to successfully deleted ids and readable
+    errors.  Cleanup is deliberately best effort: the local rejection is
+    already committed before this function is called, so a MoviePilot outage
+    cannot make the admin action appear to fail.
+    """
+    targets: list[tuple[int, int]] = []
+    owners: dict[int, list[int]] = {}
+    for row in rows:
+        for subscribe_id in _paused_moviepilot_subscription_ids(row):
+            owners.setdefault(subscribe_id, []).append(row.id)
+    targets = [(owner_ids[0], subscribe_id) for subscribe_id, owner_ids in owners.items()]
+    results: dict[int, tuple[set[int], list[str]]] = {
+        row.id: (set(), []) for row in rows if _paused_moviepilot_subscription_ids(row)
+    }
+    if not targets or not moviepilot_enabled():
+        return results
+
+    try:
+        async with MoviePilotClient() as client:
+            for row_id, subscribe_id in targets:
+                try:
+                    await client.delete_subscription(subscribe_id)
+                except Exception as exc:  # noqa: BLE001 - cleanup must continue
+                    for owner_id in owners.get(subscribe_id, [row_id]):
+                        results[owner_id][1].append(f"订阅 {subscribe_id}: {str(exc)[:240]}")
+                    logger.warning(
+                        "拒绝求片后删除 MoviePilot 订阅失败（request=%s subscription=%s）：%s",
+                        row_id,
+                        subscribe_id,
+                        exc,
+                    )
+                else:
+                    for owner_id in owners.get(subscribe_id, [row_id]):
+                        results[owner_id][0].add(subscribe_id)
+    except Exception as exc:  # noqa: BLE001 - remote cleanup is best effort
+        message = str(exc)[:240] or "MoviePilot 请求失败"
+        for subscribe_id, owner_ids in owners.items():
+            for owner_id in owner_ids:
+                deleted, errors = results[owner_id]
+                if subscribe_id not in deleted:
+                    errors.append(f"订阅 {subscribe_id}: {message}")
+        logger.warning("拒绝求片后连接 MoviePilot 清理订阅失败：%s", exc)
+    return results
+
+
 async def reject_media_request_group(
     db: AsyncSession,
     *,
@@ -3507,6 +3581,23 @@ async def reject_media_request_group(
         commit=False,
     )
     await db.commit()
+    cleanup = await _delete_paused_moviepilot_subscriptions(rows)
+    if cleanup:
+        for row in rows:
+            deleted, failures = cleanup.get(row.id, (set(), []))
+            current_ids = set(_paused_moviepilot_subscription_ids(row))
+            if not current_ids:
+                continue
+            remaining = sorted(current_ids - deleted)
+            if not remaining:
+                row.moviepilot_subscribe_ids = "[]"
+                row.moviepilot_subscribe_state = "D"
+            else:
+                row.moviepilot_subscribe_ids = json.dumps(remaining)
+                row.moviepilot_subscribe_state = "S"
+            if failures:
+                row.moviepilot_error = "拒绝后删除 MoviePilot 订阅失败：" + "；".join(failures)
+        await db.commit()
     title = rows[0].title if rows else f"TMDB {tmdb_id}"
     await _safe_notify(
         "求片已拒绝",
