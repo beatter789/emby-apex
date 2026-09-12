@@ -402,7 +402,7 @@
   transition: opacity .18s ease;
 }
 .portal-request-workspace .portal-poster-card:hover .media-card-overlay,
-.portal-request-workspace .portal-poster-card:focus-visible .media-card-overlay { opacity: 1; }
+.portal-request-workspace .portal-poster-card:focus-visible .media-card-overlay { opacity: 1; pointer-events: auto; }
 .portal-request-workspace .media-card-year { font-size: 11px; line-height: 1.2; color: rgba(255,255,255,.82); }
 .portal-request-workspace .media-card-title { margin: 2px 0 4px; color: #fff; font-size: 15px; line-height: 1.25; font-weight: 700; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .portal-request-workspace .media-card-overview { margin: 0; color: rgba(255,255,255,.88); font-size: 11px; line-height: 1.4; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
