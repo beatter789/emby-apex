@@ -336,3 +336,20 @@
 .portal-request-workspace .mp-detail-actions{position:absolute;top:350px;right:5vw;margin:0}
 .portal-request-workspace .portal-detail-overview{max-width:900px;margin-top:26px;font-size:15px;line-height:1.8}.portal-request-workspace .portal-detail-facts{max-width:900px;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:22px}
 @media(max-width:680px){.portal-request-workspace .portal-media-dialog-panel{padding:0 14px 36px}.portal-request-workspace .portal-detail-hero{grid-template-columns:96px minmax(0,1fr);min-height:350px;margin:0 -14px;padding:120px 14px 20px;gap:14px}.portal-request-workspace .portal-detail-poster{width:96px}.portal-request-workspace .portal-detail-copy h3{font-size:22px}.portal-request-workspace .mp-detail-actions{position:static;margin:14px 0 0}.portal-request-workspace .portal-detail-facts{grid-template-columns:1fr 1fr}.portal-request-workspace .portal-dialog-header{top:10px;right:10px}}
+
+/* MediaCard sizing from MoviePilot V3: compact posters with eight columns on
+   desktop.  The detail view remains independently sized. */
+.portal-request-workspace .portal-poster-grid,
+.portal-request-workspace .result-grid{grid-template-columns:repeat(8,minmax(0,1fr));gap:14px}
+.portal-request-workspace .portal-poster-card .result-body{padding:8px;font-size:12px}
+.portal-request-workspace .portal-poster-card .result-body h3{font-size:13px}
+.portal-request-workspace .portal-poster-card .meta{font-size:11px}
+.portal-request-workspace .portal-poster-card .overview{display:none}
+.portal-request-workspace .portal-poster-card .poster{aspect-ratio:2/3;border-radius:8px}
+/* V3 detail hero uses a restrained poster column; artwork should not dominate
+   the metadata and season content. */
+.portal-request-workspace .portal-detail-hero{grid-template-columns:160px minmax(0,1fr);min-height:360px;padding:150px 5vw 24px;gap:22px}
+.portal-request-workspace .portal-detail-poster{width:160px}
+@media(max-width:1200px){.portal-request-workspace .portal-poster-grid,.portal-request-workspace .result-grid{grid-template-columns:repeat(6,minmax(0,1fr))}}
+@media(max-width:900px){.portal-request-workspace .portal-poster-grid,.portal-request-workspace .result-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:680px){.portal-request-workspace .portal-poster-grid,.portal-request-workspace .result-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.portal-request-workspace .portal-detail-hero{grid-template-columns:96px minmax(0,1fr);min-height:300px;padding:100px 14px 18px}.portal-request-workspace .portal-detail-poster{width:96px}}
