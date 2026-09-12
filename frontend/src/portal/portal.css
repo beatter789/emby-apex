@@ -350,6 +350,84 @@
    the metadata and season content. */
 .portal-request-workspace .portal-detail-hero{grid-template-columns:160px minmax(0,1fr);min-height:360px;padding:150px 5vw 24px;gap:22px}
 .portal-request-workspace .portal-detail-poster{width:160px}
+.portal-request-workspace .portal-detail-copy .mp-detail-actions{position:static;display:flex;justify-content:flex-start;padding:0;margin:18px 0 0;background:transparent}
+.portal-request-workspace .detail-media-attributes{margin:10px 0;color:#b8b7c5;font-size:14px}
 @media(max-width:1200px){.portal-request-workspace .portal-poster-grid,.portal-request-workspace .result-grid{grid-template-columns:repeat(6,minmax(0,1fr))}}
 @media(max-width:900px){.portal-request-workspace .portal-poster-grid,.portal-request-workspace .result-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:680px){.portal-request-workspace .portal-poster-grid,.portal-request-workspace .result-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.portal-request-workspace .portal-detail-hero{grid-template-columns:96px minmax(0,1fr);min-height:300px;padding:100px 14px 18px}.portal-request-workspace .portal-detail-poster{width:96px}}
+
+/* Exact MoviePilot V3 MediaCard treatment: artwork is the complete card and
+   metadata fades in over a bottom gradient while hovering.  Keep eight
+   compact posters per row on a desktop viewport. */
+.portal-request-workspace .portal-poster-grid,
+.portal-request-workspace .result-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 16px;
+}
+.portal-request-workspace .portal-poster-card {
+  position: relative;
+  display: block;
+  min-width: 0;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: #1a1b22;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .36);
+  isolation: isolate;
+}
+.portal-request-workspace .portal-poster-card > .poster {
+  display: block;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 0;
+  background: #23242c;
+}
+.portal-request-workspace .portal-poster-card .media-card-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 12px 10px 9px;
+  color: #fff;
+  background: linear-gradient(180deg, rgba(17,18,24,0) 30%, rgba(17,18,24,.86) 74%, rgba(17,18,24,.98) 100%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s ease;
+}
+.portal-request-workspace .portal-poster-card:hover .media-card-overlay,
+.portal-request-workspace .portal-poster-card:focus-visible .media-card-overlay { opacity: 1; }
+.portal-request-workspace .media-card-year { font-size: 11px; line-height: 1.2; color: rgba(255,255,255,.82); }
+.portal-request-workspace .media-card-title { margin: 2px 0 4px; color: #fff; font-size: 15px; line-height: 1.25; font-weight: 700; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.portal-request-workspace .media-card-overview { margin: 0; color: rgba(255,255,255,.88); font-size: 11px; line-height: 1.4; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.portal-request-workspace .media-card-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
+.portal-request-workspace .media-card-actions button { display: inline-grid; width: 28px; height: 28px; place-items: center; padding: 0; border: 0; border-radius: 50%; background: rgba(255,255,255,.16); color: #fff; cursor: pointer; }
+.portal-request-workspace .media-card-actions > span { color: #fff; font-size: 21px; line-height: 1; }
+.portal-request-workspace .mp-type-chip,
+.portal-request-workspace .mp-rating-chip,
+.portal-request-workspace .mp-status-chip { position: absolute; z-index: 3; padding: 3px 7px; border-radius: 4px; color: #fff; font-size: 10px; line-height: 1.2; font-weight: 700; }
+.portal-request-workspace .mp-type-chip { top: 8px; left: 8px; background: rgba(96, 76, 220, .9); }
+.portal-request-workspace .mp-rating-chip { top: 8px; right: 8px; background: rgba(32, 33, 43, .92); }
+.portal-request-workspace .mp-status-chip { top: 31px; right: 8px; background: rgba(43, 117, 83, .92); }
+.portal-request-workspace .mp-status-chip.pending { background: rgba(182, 124, 24, .95); }
+.portal-request-workspace .mp-status-chip.bad { background: rgba(165, 57, 78, .95); }
+@media (max-width: 1200px) {
+  .portal-request-workspace .portal-poster-grid,
+  .portal-request-workspace .result-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .portal-request-workspace .portal-poster-grid,
+  .portal-request-workspace .result-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+}
+@media (max-width: 680px) {
+  .portal-request-workspace .portal-poster-grid,
+  .portal-request-workspace .result-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .portal-request-workspace .media-card-title { font-size: 12px; }
+  .portal-request-workspace .media-card-overview { font-size: 10px; }
+}
