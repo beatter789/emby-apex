@@ -171,7 +171,7 @@ const userDialogOpen = ref(false);
 const userDialogBusy = ref(false);
 const userDialogNotice = ref('');
 const userDialogError = ref('');
-const userEdit = ref({ expires_at: '', permanent: false, disabled: false, playback_enabled: false, portal_enabled: false, portal_password: '', note: '' });
+const userEdit = ref({ expires_at: '', permanent: false, disabled: false, playback_enabled: false, portal_enabled: false, is_friend: false, portal_password: '', note: '' });
 const selectedRequest = ref<RequestGroup | null>(null);
 const requestDetail = ref<Record<string, any> | null>(null);
 const requestDetailBusy = ref(false);
@@ -346,6 +346,7 @@ async function openUserDetails(user: Record<string, any>): Promise<void> {
     disabled: Boolean(user.is_disabled),
     playback_enabled: Boolean(user.playback_enabled),
     portal_enabled: Boolean(user.portal_enabled),
+    is_friend: Boolean(user.is_friend),
     portal_password: '',
     note: String(user.note || ''),
   };
@@ -354,7 +355,10 @@ async function openUserDetails(user: Record<string, any>): Promise<void> {
   userDialogOpen.value = true;
   try {
     const response = await getApi<Record<string, any>>(`/users/${user.id}`);
-    if (response.data && userDialogOpen.value && selectedUser.value?.id === user.id) selectedUser.value = response.data;
+    if (response.data && userDialogOpen.value && selectedUser.value?.id === user.id) {
+      selectedUser.value = response.data;
+      userEdit.value.is_friend = Boolean(response.data.is_friend);
+    }
   } catch (reason) {
     if (userDialogOpen.value && selectedUser.value?.id === user.id) userDialogError.value = safeOperationError(reason, '用户详情加载');
   }
@@ -385,6 +389,7 @@ async function saveUserDetails(): Promise<void> {
       disabled: userEdit.value.disabled,
       playback_enabled: userEdit.value.playback_enabled,
       portal_enabled: userEdit.value.portal_enabled,
+      is_friend: userEdit.value.is_friend,
       ...(userEdit.value.portal_password ? { password: userEdit.value.portal_password } : {}),
       note: userEdit.value.note,
     }, csrfToken.value);
@@ -700,7 +705,7 @@ async function rejectRequest(group: RequestGroup): Promise<void> {
   });
   if (succeeded && selectedRequest.value && groupKey(selectedRequest.value) === groupKey(group)) {
     selectedRequest.value = { ...selectedRequest.value, status: 'rejected' };
-    requestDetailNotice.value = '已拒绝求片，当前列表已更新。';
+    requestDetailNotice.value = '已忽略求片，当前列表已更新。';
   }
 }
 async function generateCodes(): Promise<void> { await run('generate-codes', async () => { await postApi('/codes', codeForm.value, csrfToken.value); await loadResource(true); }); }
@@ -910,8 +915,8 @@ onBeforeUnmount(cleanup);
         </template>
 
         <template v-else-if="pageData && currentPath === '/requests'">
-          <section class="panel"><div class="row request-filter-row"><button v-for="state in ['pending','in_library','rejected','all']" :key="state" class="sm" :class="{ secondary: requestState === state }" type="button" @click="requestState = state; loadResource()">{{ state === 'pending' ? '待处理' : state === 'in_library' ? '已入库' : state === 'rejected' ? '已拒绝' : '全部' }}</button></div></section>
-          <div v-if="!requestGroups.length" class="panel empty"><Film :size="28" /><span>暂无求片记录。</span></div><div v-else class="request-admin-grid"><article v-for="group in requestGroups" :key="groupKey(group)" class="request-admin-card request-admin-card-clickable" role="button" tabindex="0" @click="openRequestDetails(group)" @keydown.enter="openRequestDetails(group)"><div class="request-head"><img class="request-poster" :src="group.poster_local_url || group.poster_url || '/static/logoicon.png'" :alt="group.title" loading="lazy"><div class="request-main"><h2>{{ group.title }}</h2><p class="meta">{{ group.media_type === 'movie' ? '电影' : '电视剧' }} · {{ group.year || '年份未知' }} · TMDB {{ group.tmdb_id }}</p><p class="overview">{{ group.overview || '暂无简介' }}</p><div class="request-card-meta"><span class="badge" :class="group.status === 'pending' ? 'pending' : group.status === 'in_library' ? 'ok' : 'off'">{{ group.status === 'pending' ? '待处理' : group.status === 'in_library' ? '已入库' : '已拒绝' }}</span><span v-if="group.media_type === 'tv' && requestSeasonLabel(group.season_numbers)" class="badge info">{{ requestSeasonLabel(group.season_numbers) }}</span><span class="muted small">{{ group.items?.length || 0 }} 位用户求片</span></div></div></div><div class="request-users request-card-users"><div v-for="item in (group.items || []).slice(0, 3)" :key="item.id" class="request-user-line"><span>{{ item.username }}</span><span class="muted">{{ item.note || '无备注' }}<template v-if="item.season_numbers?.length"> · {{ requestSeasonLabel(item.season_numbers) }}</template></span><time>{{ formatDateTime(item.created_at) }}</time></div><span v-if="(group.items || []).length > 3" class="muted small">还有 {{ group.items.length - 3 }} 条记录</span></div><div v-if="group.status === 'pending'" class="request-actions row" @click.stop><button class="primary sm" type="button" @click="confirmRequest(group)">确认入库</button><form class="reject-form" @submit.prevent="rejectRequest(group)"><input v-model="rejectReasons[groupKey(group)]" maxlength="1000" placeholder="拒绝原因（可选）"><button class="danger sm" type="submit">拒绝</button></form></div></article></div>
+          <section class="panel"><div class="row request-filter-row"><button v-for="state in ['pending','in_library','rejected','all']" :key="state" class="sm" :class="{ secondary: requestState === state }" type="button" @click="requestState = state; loadResource()">{{ state === 'pending' ? '待处理' : state === 'in_library' ? '已入库' : state === 'rejected' ? '已忽略' : '全部' }}</button></div></section>
+          <div v-if="!requestGroups.length" class="panel empty"><Film :size="28" /><span>暂无求片记录。</span></div><div v-else class="request-admin-grid"><article v-for="group in requestGroups" :key="groupKey(group)" class="request-admin-card request-admin-card-clickable" role="button" tabindex="0" @click="openRequestDetails(group)" @keydown.enter="openRequestDetails(group)"><div class="request-head"><img class="request-poster" :src="group.poster_local_url || group.poster_url || '/static/logoicon.png'" :alt="group.title" loading="lazy"><div class="request-main"><h2>{{ group.title }}</h2><p class="meta">{{ group.media_type === 'movie' ? '电影' : '电视剧' }} · {{ group.year || '年份未知' }} · TMDB {{ group.tmdb_id }}</p><p class="overview">{{ group.overview || '暂无简介' }}</p><div class="request-card-meta"><span class="badge" :class="group.status === 'pending' ? 'pending' : group.status === 'in_library' ? 'ok' : 'off'">{{ group.status === 'pending' ? '待处理' : group.status === 'in_library' ? '已入库' : '已忽略' }}</span><span v-if="group.media_type === 'tv' && requestSeasonLabel(group.season_numbers)" class="badge info">{{ requestSeasonLabel(group.season_numbers) }}</span><span class="muted small">{{ group.items?.length || 0 }} 位用户求片</span></div></div></div><div class="request-users request-card-users"><div v-for="item in (group.items || []).slice(0, 3)" :key="item.id" class="request-user-line"><span>{{ item.username }}</span><span class="muted">{{ item.note || '无备注' }}<template v-if="item.season_numbers?.length"> · {{ requestSeasonLabel(item.season_numbers) }}</template></span><time>{{ formatDateTime(item.created_at) }}</time></div><span v-if="(group.items || []).length > 3" class="muted small">还有 {{ group.items.length - 3 }} 条记录</span></div><div v-if="group.status === 'pending'" class="request-actions row" @click.stop><button class="primary sm" type="button" @click="confirmRequest(group)">确认入库</button><form class="reject-form" @submit.prevent="rejectRequest(group)"><input v-model="rejectReasons[groupKey(group)]" maxlength="1000" placeholder="忽略原因（可选）"><button class="danger sm" type="submit">忽略</button></form></div></article></div>
         </template>
 
         <template v-else-if="pageData && currentPath === '/codes'">
@@ -1029,6 +1034,7 @@ onBeforeUnmount(cleanup);
             <label v-if="!userEdit.permanent"><span>到期时间</span><input v-model="userEdit.expires_at" type="datetime-local" step="1"><small class="muted">精确到秒，按本地时间保存。</small></label>
             <label class="switch-field"><input v-model="userEdit.playback_enabled" type="checkbox"><span><strong>播放权限</strong><small>{{ userEdit.playback_enabled ? '允许播放媒体内容。' : '已禁止播放媒体内容。' }}</small></span></label>
             <label v-if="!selectedUser?.is_admin" class="switch-field"><input v-model="userEdit.portal_enabled" type="checkbox"><span><strong>开通用户端登录</strong><small>{{ userEdit.portal_enabled ? '允许该账号登录用户端。' : '禁止该账号登录用户端。' }}</small></span></label>
+            <label v-if="!selectedUser?.is_admin" class="switch-field"><input v-model="userEdit.is_friend" type="checkbox"><span><strong>好友账号</strong><small>{{ userEdit.is_friend ? '隐藏用户端的激活和扫码入口。' : '显示完整激活功能。' }}</small></span></label>
             <label v-if="!selectedUser?.is_admin && userEdit.portal_enabled && !selectedUser?.portal_password_configured"><span>用户端初始密码</span><input v-model="userEdit.portal_password" type="password" minlength="8" autocomplete="new-password" placeholder="至少 8 位"><small class="muted">首次开通必须设置密码，之后可在用户端修改。</small></label>
             <label class="switch-field"><input v-model="userEdit.disabled" type="checkbox" :disabled="Boolean(selectedUser?.is_admin)"><span><strong>账号状态</strong><small>{{ selectedUser?.is_admin ? '管理员账号不可停用。' : (userEdit.disabled ? '停用后将无法登录。' : '账号可正常登录。') }}</small></span></label>
             <label><span>备注</span><textarea v-model="userEdit.note" maxlength="1000" placeholder="可选备注"></textarea></label>
@@ -1044,8 +1050,8 @@ onBeforeUnmount(cleanup);
           <div v-if="requestDetailBusy" class="vue-state compact"><LoaderCircle class="spin" :size="23" />正在加载作品详情…</div>
           <template v-else-if="requestDetail">
             <div class="request-detail-hero" :style="requestDetail.backdrop_url ? { backgroundImage: `linear-gradient(90deg, rgba(19,17,28,.97), rgba(19,17,28,.65)), url(${requestDetail.backdrop_url})` } : undefined"><img class="request-detail-poster" :src="requestDetail.poster_url || selectedRequest.poster_local_url || selectedRequest.poster_url || '/static/logoicon.png'" :alt="requestDetail.title || selectedRequest.title"><div class="request-detail-copy"><h3>{{ requestDetail.title || selectedRequest.title }}</h3><p v-if="requestDetail.original_title" class="muted">{{ requestDetail.original_title }}</p><p>{{ requestDetail.overview || '暂无简介' }}</p><div class="detail-chip-row"><span v-for="genre in (requestDetail.genres || [])" :key="genre" class="badge info">{{ genre }}</span><span v-if="requestDetail.rating != null" class="badge warn"><Star :size="12" />{{ Number(requestDetail.rating).toFixed(1) }}</span><span class="badge">{{ detailRuntime(requestDetail) }}</span></div></div></div>
-            <div class="request-detail-facts"><div><strong>导演</strong><span>{{ peopleNames(requestDetail.directors) || '—' }}</span></div><div><strong>演员</strong><span>{{ peopleNames(requestDetail.cast, 12) || '—' }}</span></div><div v-if="selectedRequest.media_type === 'tv'"><strong>订阅季</strong><span>{{ requestSeasonLabel(selectedRequest.season_numbers) || '—' }}</span></div><div><strong>求片用户</strong><span>{{ requestUserNames(selectedRequest) || '—' }}</span></div><div><strong>提交时间</strong><span>{{ formatDateTime((selectedRequest.items || [])[0]?.created_at) }}</span></div><div><strong>备注</strong><span>{{ requestNotes(selectedRequest) || '—' }}</span></div><div><strong>拒绝原因</strong><span>{{ requestRejectionReasons(selectedRequest) || '—' }}</span></div></div>
-            <footer v-if="selectedRequest.status === 'pending'" class="apex-dialog-actions request-detail-actions"><button class="primary sm" type="button" :disabled="Boolean(busy) || !online" @click.stop="confirmRequest(selectedRequest)"><CheckCircle2 :size="15" />确认入库</button><form class="reject-form" @submit.prevent.stop="rejectRequest(selectedRequest)"><input v-model="rejectReasons[groupKey(selectedRequest)]" maxlength="1000" placeholder="拒绝原因（可选）"><button class="danger sm" type="submit" :disabled="Boolean(busy) || !online">拒绝</button></form></footer>
+            <div class="request-detail-facts"><div><strong>导演</strong><span>{{ peopleNames(requestDetail.directors) || '—' }}</span></div><div><strong>演员</strong><span>{{ peopleNames(requestDetail.cast, 12) || '—' }}</span></div><div v-if="selectedRequest.media_type === 'tv'"><strong>订阅季</strong><span>{{ requestSeasonLabel(selectedRequest.season_numbers) || '—' }}</span></div><div><strong>求片用户</strong><span>{{ requestUserNames(selectedRequest) || '—' }}</span></div><div><strong>提交时间</strong><span>{{ formatDateTime((selectedRequest.items || [])[0]?.created_at) }}</span></div><div><strong>备注</strong><span>{{ requestNotes(selectedRequest) || '—' }}</span></div><div><strong>忽略原因</strong><span>{{ requestRejectionReasons(selectedRequest) || '—' }}</span></div></div>
+            <footer v-if="selectedRequest.status === 'pending'" class="apex-dialog-actions request-detail-actions"><button class="primary sm" type="button" :disabled="Boolean(busy) || !online" @click.stop="confirmRequest(selectedRequest)"><CheckCircle2 :size="15" />确认入库</button><form class="reject-form" @submit.prevent.stop="rejectRequest(selectedRequest)"><input v-model="rejectReasons[groupKey(selectedRequest)]" maxlength="1000" placeholder="忽略原因（可选）"><button class="danger sm" type="submit" :disabled="Boolean(busy) || !online">忽略</button></form></footer>
           </template>
         </div>
       </dialog>

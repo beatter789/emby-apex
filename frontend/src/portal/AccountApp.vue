@@ -21,6 +21,7 @@ export type AccountState = {
   playback_source: string;
   synced_at: string | null;
   registered_at: string | null;
+  is_friend?: boolean;
 };
 type RedeemCode = { code: string; duration?: string; amount?: number; unit?: string; used_at?: string | null };
 type PendingCode = { code: string; generated_at: string | null; expires_at: string | null };
@@ -42,6 +43,7 @@ const portalNav = [
   { path: '/account#scan', label: '扫码', icon: ScanLine },
   { path: '/account#settings', label: '账户设置', icon: Settings },
 ];
+const visiblePortalNav = computed(() => account.value?.is_friend ? portalNav.filter(item => !item.path.includes('#activation') && !item.path.includes('#scan')) : portalNav);
 
 function sectionFromHash(): PortalSection {
   const hash = window.location.hash.slice(1);
@@ -111,6 +113,7 @@ function operationError(reason: unknown, fallback: string): string {
 }
 function goBack(): void { navigateBack('portal'); }
 function selectSection(next: PortalSection): void {
+  if ((next === 'activation' || next === 'scan') && account.value?.is_friend) next = 'overview';
   section.value = next;
   window.history.replaceState(null, '', next === 'overview' ? '/account' : `/account#${next}`);
   actionError.value = ''; actionNotice.value = ''; activationError.value = ''; activationNotice.value = '';
@@ -128,6 +131,10 @@ async function load(): Promise<void> {
   try {
     const response = await getApi<AccountState>('/account');
     account.value = response.data;
+    if (response.data?.is_friend && (section.value === 'activation' || section.value === 'scan')) {
+      section.value = 'overview';
+      window.history.replaceState(null, '', '/account');
+    }
     username.value = response.data?.username || '';
   } catch (reason) { handleError(reason, '账户加载失败，请稍后重试。'); }
   finally { loading.value = false; }
@@ -271,7 +278,7 @@ onBeforeUnmount(() => {
   <div class="portal-workspace">
     <aside class="portal-sidebar" aria-label="用户中心导航">
       <div class="brand-block"><img :src="'/static/brand-logo.png'" alt=""><div class="brand-copy"><strong>Emby Apex</strong><span>用户中心</span></div></div>
-      <AppNav class="portal-sidebar-nav" :items="portalNav" :active-path="activePath" aria-label="用户中心导航" />
+      <AppNav class="portal-sidebar-nav" :items="visiblePortalNav" :active-path="activePath" aria-label="用户中心导航" />
       <button class="portal-sidebar-logout" type="button" :disabled="busy === 'logout'" @click="logout"><LogOut :size="16" />退出登录</button>
     </aside>
     <main class="portal-main vue-account-app">
@@ -302,6 +309,6 @@ onBeforeUnmount(() => {
         <section v-else class="card portal-section"><h2>账户设置</h2><p class="hint">修改用户名或密码后，请使用新凭据登录 Emby 客户端。</p><div class="setting-section"><h3>修改用户名</h3><form @submit.prevent="changeUsername"><label><span>新用户名</span><input v-model="username" type="text" required autocomplete="off"></label><button class="primary" type="submit" :disabled="busy === 'username' || !online">{{ busy === 'username' ? '保存中' : '保存用户名' }}</button></form></div><div class="setting-section"><h3>修改密码</h3><form @submit.prevent="changePassword"><label><span>当前密码</span><input v-model="oldPassword" type="password" required autocomplete="current-password"></label><label><span>新密码</span><input v-model="newPassword" type="password" required autocomplete="new-password"></label><label><span>确认新密码</span><input v-model="newPassword2" type="password" required autocomplete="new-password"></label><button class="primary" type="submit" :disabled="busy === 'password' || !online">{{ busy === 'password' ? '保存中' : '保存密码' }}</button></form></div></section>
       </template>
     </main>
-    <MobileBottomNav :items="portalNav" :active-path="activePath" aria-label="用户中心导航" />
+    <MobileBottomNav :items="visiblePortalNav" :active-path="activePath" aria-label="用户中心导航" />
   </div>
 </template>

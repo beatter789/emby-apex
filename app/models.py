@@ -71,6 +71,8 @@ class ManagedUser(Base):
 
     is_disabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Friend accounts bypass activation surfaces in the portal.
+    is_friend: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     # 手动停用与到期停用要区分开，续期时才知道该不该自动放行

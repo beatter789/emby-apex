@@ -107,6 +107,8 @@ const portalNav = [
   { path: '/account#scan', label: '扫码', icon: ScanLine },
   { path: '/account#settings', label: '账户设置', icon: Settings },
 ];
+const isFriend = ref(false);
+const visiblePortalNav = computed(() => isFriend.value ? portalNav.filter(item => !item.path.includes('#activation') && !item.path.includes('#scan')) : portalNav);
 
 const detailFields = [
   'release_date',
@@ -125,7 +127,7 @@ const detailFields = [
 const props = defineProps<Props>();
 const standalone = props.standalone !== false;
 const csrfToken = ref(props.bootstrap.csrfToken || '');
-const tab = ref<RequestTab>(props.bootstrap.tab || 'search');
+const tab = ref<RequestTab>(props.bootstrap.tab === 'rejected' ? 'search' : (props.bootstrap.tab || 'search'));
 const mode = ref<SearchMode>(props.bootstrap.mode || 'multi');
 const query = ref(props.bootstrap.query || '');
 const year = ref(props.bootstrap.year || '');
@@ -226,7 +228,7 @@ function itemRequestState(item: MediaItem): 'pending' | 'library' | 'rejected' |
 }
 
 function statusLabel(state: string): string {
-  return ({ pending: '已求片', library: '已入库', rejected: '已拒绝' } as Record<string, string>)[state] || '';
+  return ({ pending: '已求片', library: '已入库' } as Record<string, string>)[state] || '';
 }
 
 function statusClass(state: string): string {
@@ -239,8 +241,8 @@ function mediaLabel(item: MediaItem): string {
 
 function libraryStateLabel(item: MediaItem): string {
   if (itemRequestState(item) === 'library') return '已入库';
-  if (item.library_state === 'unknown') return '无法确认';
-  if (item.library_state === 'not_in_library') return '未入库';
+  // 用户端不展示库状态无法确认/未入库标签。
+  if (item.library_state === 'unknown' || item.library_state === 'not_in_library') return '';
   return '';
 }
 
@@ -602,6 +604,10 @@ onMounted(async () => {
   } catch (error) {
     handleError(error, '无法建立安全会话，请刷新页面重试。');
   }
+  try {
+    const account = await getApi<{ is_friend?: boolean }>('/account');
+    isFriend.value = Boolean(account.data?.is_friend);
+  } catch { /* account data is optional for request navigation */ }
   void loadLists();
 });
 
@@ -617,7 +623,7 @@ onBeforeUnmount(() => {
   <div class="portal-workspace portal-request-workspace">
     <aside class="portal-sidebar" aria-label="用户中心导航">
       <div class="brand-block"><img :src="'/static/brand-logo.png'" alt=""><div class="brand-copy"><strong>Emby Apex</strong><span>用户中心</span></div></div>
-      <AppNav class="portal-sidebar-nav" :items="portalNav" active-path="/requests" aria-label="用户中心导航" />
+      <AppNav class="portal-sidebar-nav" :items="visiblePortalNav" active-path="/requests" aria-label="用户中心导航" />
     </aside>
 
     <section class="vue-request-app" aria-label="Vue 求片中心">
@@ -635,7 +641,6 @@ onBeforeUnmount(() => {
         <button type="button" :class="['tab', { on: tab === 'search' }]" @click="changeTab('search')"><Search :size="15" />求片</button>
         <button type="button" :class="['tab', { on: tab === 'pending' }]" @click="changeTab('pending')">已求片 <span>{{ pendingCount }}</span></button>
         <button type="button" :class="['tab', { on: tab === 'library' }]" @click="changeTab('library')">已入库 <span>{{ libraryCount }}</span></button>
-        <button type="button" :class="['tab', { on: tab === 'rejected' }]" @click="changeTab('rejected')">已拒绝 <span>{{ rejectedCount }}</span></button>
       </nav>
 
       <template v-if="tab === 'search'">
@@ -657,7 +662,7 @@ onBeforeUnmount(() => {
             <article v-for="item in results" :key="recordKey(item)" class="result-card vue-result-card portal-poster-card" role="button" tabindex="0" @click="select(item)" @keydown.enter.prevent="select(item)">
               <img class="poster" :src="poster(item)" :alt="item.title" loading="lazy">
               <span class="mp-type-chip">{{ mediaLabel(item) }}</span>
-              <span v-if="itemRequestState(item)" :class="['mp-status-chip', statusClass(itemRequestState(item))]">{{ statusLabel(itemRequestState(item)) }}</span>
+              <span v-if="statusLabel(itemRequestState(item))" :class="['mp-status-chip', statusClass(itemRequestState(item))]">{{ statusLabel(itemRequestState(item)) }}</span>
               <span v-else-if="libraryStateLabel(item)" class="mp-status-chip">{{ libraryStateLabel(item) }}</span>
               <span v-if="item.rating" class="mp-rating-chip">{{ Number(item.rating).toFixed(1) }}</span>
               <div class="media-card-overlay">
@@ -693,7 +698,7 @@ onBeforeUnmount(() => {
         @subscribe-season="subscribeSeason"
       />
     </section>
-    <MobileBottomNav :items="portalNav" active-path="/requests" aria-label="用户中心导航" />
+    <MobileBottomNav :items="visiblePortalNav" active-path="/requests" aria-label="用户中心导航" />
   </div>
 </template>
 

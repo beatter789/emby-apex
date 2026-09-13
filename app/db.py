@@ -56,6 +56,7 @@ _ADDED_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("policy_json", "TEXT NOT NULL DEFAULT ''"),
         ("playback_revoked_at", "DATETIME"),
         ("portal_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("is_friend", "BOOLEAN NOT NULL DEFAULT 0"),
         ("is_protected", "BOOLEAN NOT NULL DEFAULT 0"),
         ("claimed_at", "DATETIME"),
         ("claim_requested_at", "DATETIME"),

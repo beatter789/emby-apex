@@ -101,6 +101,7 @@ def _user_row(
         "username": user.username,
         "is_disabled": bool(user.is_disabled),
         "is_admin": bool(user.is_admin),
+        "is_friend": bool(user.is_friend),
         "is_protected": bool(user.is_protected),
         "portal_enabled": bool(user.portal_enabled),
         "portal_password_configured": bool(user.portal_password_hash),
@@ -582,6 +583,8 @@ async def update_user(user_id: int, request: Request, db: DbSession) -> Any:
             else:
                 if user.portal_enabled:
                     await services.disable_portal_login(db, user)
+        if "is_friend" in data:
+            user.is_friend = _bool_value(data.get("is_friend"))
         if "protected" in data:
             await services.set_user_protected(db, user, _bool_value(data["protected"]))
     except ValueError as exc:

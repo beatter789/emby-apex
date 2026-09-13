@@ -55,6 +55,7 @@ def _account_data(user) -> dict[str, Any]:
     return {
         "username": user.username,
         "server_id": user.server_id,
+        "is_friend": bool(user.is_friend),
         "status": _describe_status(user),
         "is_disabled": bool(user.is_disabled),
         "playback_enabled": bool(user.playback_enabled),
@@ -156,6 +157,8 @@ async def activation(request: Request, db: DbSession) -> Any:
     user = await get_portal_user(request, db)
     if user is None:
         return error("未登录或登录已失效", status_code=401)
+    if user.is_friend:
+        return error("好友账号无需激活", status_code=403)
     try:
         now = utcnow()
         rows = (
@@ -198,6 +201,8 @@ async def activation_image(request: Request, db: DbSession) -> Response:
     user = await get_portal_user(request, db)
     if user is None:
         return error("未登录或登录已失效", status_code=401)
+    if user.is_friend:
+        return error("好友账号无需激活", status_code=403)
     try:
         meta = await _activation_image_meta(db)
     except Exception:
@@ -231,6 +236,8 @@ async def redeem(request: Request, db: DbSession) -> Any:
     user = await get_portal_user(request, db)
     if user is None:
         return error("未登录或登录已失效", status_code=401)
+    if user.is_friend:
+        return error("好友账号无需激活", status_code=403)
     data, form_token = await payload(request)
     if not csrf_required(request, str(data.get("csrf_token") or form_token)):
         return error("CSRF 校验失败，请刷新页面重试", status_code=400)
@@ -246,6 +253,8 @@ async def activation_bill_code(request: Request, db: DbSession) -> Any:
     user = await get_portal_user(request, db)
     if user is None:
         return error("未登录或登录已失效", status_code=401)
+    if user.is_friend:
+        return error("好友账号无需激活", status_code=403)
     data, form_token = await payload(request)
     if not csrf_required(request, str(data.get("csrf_token") or form_token)):
         return error("CSRF 校验失败，请刷新页面重试", status_code=400)
