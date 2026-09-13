@@ -116,6 +116,25 @@ docker:
 ## 修复验证
 
 ### 类型检查应该通过
+
+**修复的类型错误：**
+
+1. **第一个错误** - `CreditPerson` 类型不匹配
+   - 问题：`id` 字段 `number | null` vs `number | undefined`
+   - 修复：在 MediaDetailView 中添加匹配的类型定义
+
+2. **第二个错误** - `episodes_info` 联合类型访问
+   - 问题：`Record<string, any[]> | Array<Record<string, any>>` 无法直接索引
+   - 修复：在 `getEpisodes` 函数中添加类型收窄（type narrowing）
+   ```typescript
+   if (Array.isArray(eps)) {
+     // 处理数组情况
+     return eps.filter((ep: any) => ...);
+   }
+   // 处理 Record 情况
+   const list = eps[String(seasonNumber)];
+   ```
+
 修复后，运行 `npm run typecheck` 应该不再报错：
 
 ```bash
@@ -197,9 +216,45 @@ TypeScript 对 `null` 和 `undefined` 有严格区分：
 ## 完成标记
 
 - ✅ 文件位置检查完成
-- ✅ TypeScript 类型错误已修复
+- ✅ TypeScript 类型错误已修复（共 2 个）
+  - ✅ CreditPerson 类型不匹配
+  - ✅ episodes_info 联合类型索引错误
 - ✅ GitHub Actions 配置已验证
 - ✅ 构建流程已确认
 - ✅ 文档已创建
 
 **状态：所有问题已解决，可以推送到 GitHub 进行自动构建。**
+
+---
+
+## 修复的代码变更
+
+### MediaDetailView.vue 的两处修复：
+
+1. **添加 CreditPerson 类型定义**（第 19-24 行）
+```typescript
+type CreditPerson = {
+  id?: number | null;        // 允许 null
+  name: string;
+  character?: string | null;
+  profile_url?: string | null;
+};
+```
+
+2. **修复 getEpisodes 函数的类型收窄**（第 166-179 行）
+```typescript
+function getEpisodes(seasonNumber: number) {
+  const eps = props.mediaItem.episodes_info;
+  if (!eps || typeof eps !== 'object') return [];
+
+  // Type narrowing: check if it's a Record (not an Array)
+  if (Array.isArray(eps)) {
+    // If it's an array, filter by season_number
+    return eps.filter((ep: any) => Number(ep?.season_number ?? ep?.season ?? 1) === seasonNumber);
+  }
+
+  // It's a Record<string, Array<...>>
+  const list = eps[String(seasonNumber)];
+  return Array.isArray(list) ? list : [];
+}
+```

@@ -166,6 +166,14 @@ function handleClose() {
 function getEpisodes(seasonNumber: number) {
   const eps = props.mediaItem.episodes_info;
   if (!eps || typeof eps !== 'object') return [];
+
+  // Type narrowing: check if it's a Record (not an Array)
+  if (Array.isArray(eps)) {
+    // If it's an array, filter by season_number
+    return eps.filter((ep: any) => Number(ep?.season_number ?? ep?.season ?? 1) === seasonNumber);
+  }
+
+  // It's a Record<string, Array<...>>
   const list = eps[String(seasonNumber)];
   return Array.isArray(list) ? list : [];
 }
