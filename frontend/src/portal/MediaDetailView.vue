@@ -15,6 +15,14 @@ import {
   X,
 } from 'lucide-vue-next';
 
+// Credit Person type matching RequestApp.vue
+type CreditPerson = {
+  id?: number | null;
+  name: string;
+  character?: string | null;
+  profile_url?: string | null;
+};
+
 // Props
 interface MediaDetailProps {
   mediaItem: {
@@ -35,9 +43,9 @@ interface MediaDetailProps {
     rating?: number | null;
     runtime_minutes?: number | null;
     genres?: string[];
-    directors?: { id?: number; name: string; job?: string }[];
-    producers?: { id?: number; name: string; job?: string }[];
-    cast?: { id?: number; name: string; character?: string; profile_url?: string }[];
+    directors?: CreditPerson[];
+    producers?: CreditPerson[];
+    cast?: CreditPerson[];
     seasons?: number | null;
     episodes?: number | null;
     imdb_id?: string | null;
@@ -58,7 +66,8 @@ interface MediaDetailProps {
       name?: string;
       overview?: string;
       air_date?: string;
-    }>>;
+    }>> | Array<Record<string, any>>;
+    detail_snapshot?: Record<string, any>;
   };
   onClose?: () => void;
   onSubscribe?: (seasons?: number[]) => void;
