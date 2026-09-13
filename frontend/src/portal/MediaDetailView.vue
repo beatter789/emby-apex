@@ -1,17 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import {
-  ArrowLeft,
   Calendar,
-  CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Film,
   Heart,
-  Play,
-  Search,
   Star,
-  Tv,
   X,
 } from 'lucide-vue-next';
 
@@ -52,6 +46,7 @@ interface MediaDetailProps {
     tvdb_id?: string | number | null;
     library_state?: string;
     moviepilot_subscribe_state?: string;
+    season_numbers?: number[];
     season_info?: Array<{
       season_number?: number;
       name?: string;
@@ -71,16 +66,13 @@ interface MediaDetailProps {
   };
   onClose?: () => void;
   onSubscribe?: (seasons?: number[]) => void;
-  onSearch?: () => void;
-  onPlay?: () => void;
 }
 
 const props = defineProps<MediaDetailProps>();
 const emit = defineEmits<{
   close: [];
   subscribe: [seasons?: number[]];
-  search: [];
-  play: [];
+  'subscribe-season': [season: number];
 }>();
 
 // State
@@ -90,6 +82,21 @@ const expandedSeasons = ref<number[]>([]);
 // Computed
 const posterUrl = computed(() => props.mediaItem.poster_url || '/static/logoicon.png');
 const backdropUrl = computed(() => props.mediaItem.backdrop_url);
+
+// Snapshot fields are preserved verbatim when available so the detail page
+// reflects the data captured at request time (including language and studios).
+const snapshot = computed(() => props.mediaItem.detail_snapshot || {});
+const originalLanguage = computed(() => String((snapshot.value as any).original_language || (snapshot.value as any).originalLanguage || '—'));
+const originCountries = computed(() => {
+  const value = (snapshot.value as any).origin_country || (snapshot.value as any).origin_countries || (snapshot.value as any).production_countries;
+  if (Array.isArray(value)) return value.map((v: any) => typeof v === 'string' ? v : (v?.name || v?.iso_3166_1)).filter(Boolean).join('、') || '—';
+  return value ? String(value) : '—';
+});
+const productionCompanies = computed(() => {
+  const value = (snapshot.value as any).production_companies || (snapshot.value as any).networks;
+  if (Array.isArray(value)) return value.map((v: any) => typeof v === 'string' ? v : v?.name).filter(Boolean);
+  return value ? [String(value)] : [];
+});
 
 const mediaTypeLabel = computed(() => props.mediaItem.media_type === 'movie' ? '电影' : '电视剧');
 
@@ -129,8 +136,8 @@ const seasonsList = computed(() => {
     .sort((a, b) => a.number - b.number);
 });
 
-const isLibrary = computed(() => props.mediaItem.library_state === 'in_library');
 const isSubscribed = computed(() => props.mediaItem.moviepilot_subscribe_state === 'R');
+const subscribedSeasons = computed(() => new Set((props.mediaItem.season_numbers || []).map(Number)));
 
 // Methods
 function toggleSeason(seasonNumber: number) {
@@ -149,6 +156,11 @@ function handleSeasonSelect(seasonNumber: number) {
   } else {
     selectedSeasons.value.push(seasonNumber);
   }
+}
+
+function handleSeasonSubscribe(seasonNumber: number) {
+  if (subscribedSeasons.value.has(seasonNumber)) return;
+  emit('subscribe-season', seasonNumber);
 }
 
 function handleSubscribe() {
@@ -243,23 +255,11 @@ watch(() => props.mediaItem, (item) => {
             <span v-if="mediaItem.genres && mediaItem.genres.length">{{ mediaItem.genres.slice(0, 3).join('、') }}</span>
           </div>
 
-          <!-- Action Buttons -->
+          <!-- MoviePilot exposes a single subscribe action on the detail page. -->
           <div class="mp-detail-actions">
-            <button class="mp-action-btn mp-action-btn-primary" @click="$emit('search')">
-              <Search :size="18" />
-              搜索资源
-            </button>
-            <button class="mp-action-btn mp-action-btn-secondary" @click="$emit('search')">
-              <Search :size="18" />
-              搜索字幕
-            </button>
             <button class="mp-action-btn mp-action-btn-warning" @click="handleSubscribe">
               <Heart :size="18" :fill="isSubscribed ? 'currentColor' : 'none'" />
               {{ isSubscribed ? '已订阅' : '订阅' }}
-            </button>
-            <button v-if="isLibrary" class="mp-action-btn mp-action-btn-success" @click="$emit('play')">
-              <Play :size="18" />
-              在线播放
             </button>
           </div>
         </div>
@@ -298,18 +298,18 @@ watch(() => props.mediaItem, (item) => {
 
           <div v-if="mediaItem.media_type === 'tv'" class="mp-info-row">
             <span class="mp-info-label">原始语言</span>
-            <span class="mp-info-value">en</span>
+            <span class="mp-info-value">{{ originalLanguage }}</span>
           </div>
 
           <div v-if="mediaItem.media_type === 'tv'" class="mp-info-row">
             <span class="mp-info-label">出品国家</span>
-            <span class="mp-info-value">United States of America</span>
+            <span class="mp-info-value">{{ originCountries }}</span>
           </div>
 
-          <div v-if="mediaItem.media_type === 'tv' && mediaItem.producers && mediaItem.producers.length" class="mp-info-row">
+          <div v-if="mediaItem.media_type === 'tv' && productionCompanies.length" class="mp-info-row">
             <span class="mp-info-label">制作公司</span>
             <span class="mp-info-value">
-              HBO<br>Bastard Sword<br>1:26 Pictures<br>GRRM
+              <span v-for="company in productionCompanies" :key="company">{{ company }}<br></span>
             </span>
           </div>
         </aside>
@@ -358,13 +358,6 @@ watch(() => props.mediaItem, (item) => {
           <div class="mp-seasons-list">
             <article v-for="season in seasonsList" :key="season.number" class="mp-season-card">
               <div class="mp-season-header">
-                <label class="mp-season-checkbox">
-                  <input
-                    type="checkbox"
-                    :checked="selectedSeasons.includes(season.number)"
-                    @change="handleSeasonSelect(season.number)"
-                  >
-                </label>
                 <div class="mp-season-poster">
                   <span class="mp-season-poster-text">S{{ season.number }}</span>
                 </div>
@@ -375,7 +368,16 @@ watch(() => props.mediaItem, (item) => {
                 <span class="mp-season-status" :style="{ backgroundColor: getSeasonStatusColor(season.status) }">
                   {{ getSeasonStatusText(season.status) }}
                 </span>
-                <button class="mp-season-fav">♡</button>
+                <button
+                  class="mp-season-fav"
+                  type="button"
+                  :aria-label="`${season.name}订阅`"
+                  :title="`${season.name}订阅`"
+                  :disabled="subscribedSeasons.has(season.number)"
+                  @click.stop="handleSeasonSubscribe(season.number)"
+                >
+                  <Heart :size="20" :fill="subscribedSeasons.has(season.number) ? 'currentColor' : 'none'" />
+                </button>
                 <button class="mp-season-toggle" @click="toggleSeason(season.number)">
                   <ChevronDown v-if="!expandedSeasons.includes(season.number)" :size="20" />
                   <ChevronUp v-else :size="20" />
@@ -424,7 +426,7 @@ watch(() => props.mediaItem, (item) => {
 
 <style scoped>
 .mp-detail-modal {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 9999;
   overflow-y: auto;
@@ -433,7 +435,7 @@ watch(() => props.mediaItem, (item) => {
 }
 
 .mp-detail-backdrop {
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
   width: 100%;

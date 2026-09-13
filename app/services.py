@@ -3171,6 +3171,82 @@ async def create_media_request(
     return request_row
 
 
+async def add_media_request_season(
+    db: AsyncSession,
+    user: ManagedUser,
+    request_id: int,
+    season: int,
+) -> MediaRequest:
+    """Subscribe one additional TV season for an existing pending request.
+
+    Repeated clicks are idempotent and return the persisted row without
+    contacting MoviePilot a second time.
+    """
+    if season < 0:
+        raise RegistrationError("季信息无效")
+    row = await db.get(MediaRequest, request_id)
+    if row is None or row.server_id != user.server_id or row.managed_user_id != user.id:
+        raise RegistrationError("求片记录不存在")
+    if row.status != "pending":
+        raise RegistrationError("当前求片状态不支持追加季")
+    if row.media_type != "tv":
+        raise RegistrationError("电影不支持按季订阅")
+    try:
+        seasons = json.loads(row.season_numbers or "[]")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        seasons = []
+    if not isinstance(seasons, list):
+        seasons = [seasons]
+    season_values: list[int] = []
+    for value in seasons:
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            continue
+        if number not in season_values:
+            season_values.append(number)
+    if season in season_values:
+        return row
+    if moviepilot_enabled():
+        try:
+            async with MoviePilotClient() as client:
+                sid = await client.subscribe(
+                    name=row.title,
+                    media_type=_mp_type(row.media_type),
+                    media_source=row.media_source,
+                    media_id=row.media_id or str(row.tmdb_id),
+                    year=row.year,
+                    season=season,
+                )
+                await client.pause(sid)
+            try:
+                ids = json.loads(row.moviepilot_subscribe_ids or "[]")
+            except (TypeError, ValueError, json.JSONDecodeError):
+                ids = []
+            if not isinstance(ids, list):
+                ids = [ids]
+            clean_ids: list[int] = []
+            for value in ids:
+                try:
+                    identifier = int(value)
+                except (TypeError, ValueError):
+                    continue
+                if identifier > 0 and identifier not in clean_ids:
+                    clean_ids.append(identifier)
+            if sid not in clean_ids:
+                clean_ids.append(sid)
+            row.moviepilot_subscribe_ids = json.dumps(clean_ids, ensure_ascii=False)
+            row.moviepilot_subscribe_state = "S"
+        except MoviePilotError as exc:
+            row.moviepilot_error = str(exc)
+            await db.rollback()
+            raise RegistrationError(str(exc)) from exc
+    season_values.append(season)
+    row.season_numbers = json.dumps(sorted(set(season_values)), ensure_ascii=False)
+    await db.commit()
+    return row
+
+
 async def portal_media_requests(
     db: AsyncSession, user: ManagedUser
 ) -> dict[str, list[MediaRequest]]:

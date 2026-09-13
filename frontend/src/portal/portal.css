@@ -752,3 +752,92 @@
  .portal-request-workspace .mp-detail-dialog .mp-detail-hero .portal-detail-poster{width:8rem}
  .portal-request-workspace .mp-detail-dialog .mp-detail-columns{grid-template-columns:1fr}
 }
+
+/* Keep detail content in the request page shell so the persistent navigation
+   remains aligned with the search/list views. */
+.portal-request-workspace { position: relative; }
+.portal-request-workspace .mp-detail-modal {
+  position: absolute;
+  inset: 0 0 0 250px;
+  width: auto;
+  min-height: 100vh;
+  overflow-y: auto;
+  background: #0d0f14;
+}
+.portal-request-workspace .mp-detail-modal .mp-detail-container {
+  max-width: none;
+  min-height: 100vh;
+  padding: 0 3.6vw 64px;
+}
+.portal-request-workspace .mp-detail-modal .mp-detail-header {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  height: 64px;
+  padding: 0;
+  background: rgba(13,15,20,.94);
+  backdrop-filter: blur(14px);
+}
+.portal-request-workspace .mp-detail-modal .mp-detail-header .mp-icon-btn {
+  margin-left: auto;
+}
+.portal-request-workspace .mp-detail-modal .mp-detail-backdrop {
+  position: absolute;
+  top: 64px;
+  left: 0;
+  width: 100%;
+  height: 430px;
+  pointer-events: none;
+}
+.portal-request-workspace .mp-detail-modal .mp-detail-hero {
+  margin-inline: calc(-1 * 3.6vw);
+  padding-inline: 3.6vw;
+}
+.portal-request-workspace .mp-detail-modal .mp-detail-actions {
+  justify-content: flex-start;
+}
+@media (max-width: 680px) {
+  .portal-request-workspace .mp-detail-modal { inset: 0; }
+  .portal-request-workspace .mp-detail-modal .mp-detail-container { padding-inline: 14px; }
+  .portal-request-workspace .mp-detail-modal .mp-detail-hero { margin-inline: -14px; padding-inline: 14px; }
+}
+
+/* Active selectors for the copied MoviePilot detail component.  Keep these
+   rules scoped to the request shell so the persistent sidebar stays aligned. */
+.portal-request-workspace .mp-detail-modal .mp-detail-hero {
+  grid-template-columns: 13rem minmax(0, 1fr) 20rem;
+  align-items: end;
+  gap: 24px;
+  min-height: 430px;
+  margin-inline: -3.6vw;
+  padding: 190px 3.6vw 28px;
+  background: transparent;
+}
+.portal-request-workspace .mp-detail-modal .mp-detail-poster-wrap { width: 13rem; }
+.portal-request-workspace .mp-detail-modal .mp-detail-poster { width: 13rem; border-radius: 6px; box-shadow: 0 25px 50px -12px rgba(0,0,0,.6); }
+.portal-request-workspace .mp-detail-modal .mp-detail-title-section { align-self: end; text-align: left; }
+.portal-request-workspace .mp-detail-modal .mp-detail-info-panel { width: 20rem; align-self: end; }
+.portal-request-workspace .mp-detail-modal .mp-detail-content { width: min(1280px, 100%); max-width: none; margin: 0 auto; }
+
+@media (max-width: 1100px) {
+  .portal-request-workspace .mp-detail-modal .mp-detail-hero { grid-template-columns: 11rem minmax(0,1fr); }
+  .portal-request-workspace .mp-detail-modal .mp-detail-poster-wrap,
+  .portal-request-workspace .mp-detail-modal .mp-detail-poster { width: 11rem; }
+  .portal-request-workspace .mp-detail-modal .mp-detail-info-panel { grid-column: 1 / -1; width: 100%; }
+}
+@media (max-width: 680px) {
+  .portal-request-workspace .mp-detail-modal .mp-detail-hero {
+    grid-template-columns: 96px minmax(0,1fr);
+    align-items: end;
+    min-height: 300px;
+    margin-inline: -14px;
+    padding: 100px 14px 18px;
+    gap: 14px;
+    text-align: left;
+  }
+  .portal-request-workspace .mp-detail-modal .mp-detail-poster-wrap,
+  .portal-request-workspace .mp-detail-modal .mp-detail-poster { width: 96px; }
+  .portal-request-workspace .mp-detail-modal .mp-detail-title-section { text-align: left; }
+  .portal-request-workspace .mp-detail-modal .mp-detail-info-panel { grid-column: 1 / -1; width: 100%; }
+  .portal-request-workspace .mp-detail-modal .mp-detail-content { width: 100%; }
+}

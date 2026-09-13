@@ -378,6 +378,35 @@ async def create_request_api(request: Request, db: DbSession) -> JSONResponse:
     return _ok(_media_request_json(item), status_code=201)
 
 
+@router.post("/requests/{request_id}/season/{season_number}")
+async def add_request_season_api(
+    request_id: int, season_number: int, request: Request, db: DbSession
+) -> JSONResponse:
+    user = await _portal_api_user(request, db)
+    if user is None:
+        return _error("未登录或登录已失效", status_code=401)
+    payload, form_token = await _read_post_payload(request)
+    csrf_token = str(
+        payload.get("csrf_token")
+        or form_token
+        or request.headers.get("x-csrf-token")
+        or ""
+    )
+    if not csrf_ok(request, csrf_token):
+        return _error("CSRF 校验失败，请刷新页面重试", status_code=400)
+    try:
+        item = await services.add_media_request_season(
+            db, user, request_id, season_number
+        )
+    except RegistrationError as exc:
+        return _error(str(exc), status_code=400)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("MoviePilot 单季订阅失败")
+        return _error("MoviePilot 订阅失败，请检查配置和权限", status_code=400)
+    return _ok(_media_request_json(item, viewer_user_id=user.id))
+
+
 @router.get("/requests/{request_id}/poster")
 async def media_request_poster(request_id: int, request: Request, db: DbSession) -> Response:
     user = await _portal_api_user(request, db)

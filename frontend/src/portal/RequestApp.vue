@@ -480,15 +480,31 @@ function seasonLabel(item: MediaItem): string {
   return values.map((s: unknown) => `第 ${s} 季`).join('、');
 }
 
-async function submitRequest(): Promise<void> {
+async function submitRequest(seasonsOverride?: number[]): Promise<void> {
   const item = selected.value;
   if (!item || submitting.value) return;
+  if (Array.isArray(seasonsOverride)) selectedSeasons.value = seasonsOverride;
   if (!online.value) {
     detailError.value = '当前处于离线状态，提交操作已禁用。';
     return;
   }
   if (!csrfToken.value) {
     detailError.value = '缺少 CSRF 凭据，请刷新页面重试。';
+    return;
+  }
+  // A season heart on an existing request adds that season through the
+  // dedicated endpoint instead of creating a duplicate request.
+  if (Array.isArray(seasonsOverride) && seasonsOverride.length === 1 && item.id && selectedState.value === 'pending') {
+    submitting.value = true;
+    try {
+      await postApi<MediaItem>(`/requests/${encodeURIComponent(String(item.id))}/season/${encodeURIComponent(String(seasonsOverride[0]))}`, {}, csrfToken.value);
+      detailNotice.value = '已提交该季订阅。';
+      await loadLists();
+    } catch (error) {
+      detailError.value = error instanceof Error ? error.message : '订阅该季失败，请稍后重试。';
+    } finally {
+      submitting.value = false;
+    }
     return;
   }
   if (selectedState.value === 'pending' || selectedState.value === 'library') {
@@ -503,7 +519,10 @@ async function submitRequest(): Promise<void> {
   requestKey.value = key;
   submitting.value = true;
   try {
-    await postApi<MediaItem>('/requests', { tmdb_id: item.tmdb_id, media_id: item.media_id || String(item.tmdb_id), media_source: item.media_source || 'themoviedb', media_type: item.media_type, seasons: item.media_type === 'tv' ? selectedSeasons.value : [], note: note.value, detail: item }, csrfToken.value);
+    const seasons = item.media_type === 'tv'
+      ? (Array.isArray(seasonsOverride) && seasonsOverride.length ? seasonsOverride : selectedSeasons.value)
+      : [];
+    await postApi<MediaItem>('/requests', { tmdb_id: item.tmdb_id, media_id: item.media_id || String(item.tmdb_id), media_source: item.media_source || 'themoviedb', media_type: item.media_type, seasons, note: note.value, detail: item }, csrfToken.value);
     detailNotice.value = '求片已提交，状态已更新为进行中。';
     await loadLists();
   } catch (error) {
@@ -520,6 +539,32 @@ async function submitRequest(): Promise<void> {
     } else {
       detailError.value = error instanceof Error ? error.message : '提交失败，请稍后重试。';
     }
+  } finally {
+    submitting.value = false;
+  }
+}
+
+async function subscribeSeason(season: number): Promise<void> {
+  const item = selected.value;
+  if (!item || item.media_type !== 'tv' || submitting.value) return;
+  if (!online.value || !csrfToken.value) {
+    detailError.value = '当前无法订阅，请刷新页面后重试。';
+    return;
+  }
+  if (itemRequestState(item) !== 'pending' || !item.id) {
+    await submitRequest([season]);
+    return;
+  }
+  submitting.value = true;
+  detailError.value = '';
+  try {
+    const response = await postApi<MediaItem>(`/requests/${encodeURIComponent(String(item.id))}/season/${season}`, {}, csrfToken.value);
+    Object.assign(item, response.data || {});
+    selected.value = { ...item };
+    detailNotice.value = `第 ${season} 季已订阅。`;
+    await loadLists();
+  } catch (error) {
+    detailError.value = error instanceof Error ? error.message : '订阅失败，请稍后重试。';
   } finally {
     submitting.value = false;
   }
@@ -645,8 +690,7 @@ onBeforeUnmount(() => {
         :media-item="selected"
         @close="closeDetailDialog"
         @subscribe="submitRequest"
-        @search="() => {}"
-        @play="() => {}"
+        @subscribe-season="subscribeSeason"
       />
     </section>
     <MobileBottomNav :items="portalNav" active-path="/requests" aria-label="用户中心导航" />

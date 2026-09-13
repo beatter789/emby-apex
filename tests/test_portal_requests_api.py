@@ -392,6 +392,41 @@ class PortalRequestsApiTests(unittest.TestCase):
         self.assertEqual(second.json()["data"]["title"], "旧记录电影")
         self.assertEqual(upstream.await_count, 1)
 
+    def test_add_request_season_requires_csrf_and_delegates_to_service(self):
+        self._login_session()
+
+        async def make_tv_request():
+            async with SessionLocal() as db:
+                user = await db.get(ManagedUser, self.user_id)
+                row = MediaRequest(
+                    server_id=user.server_id,
+                    managed_user_id=self.user_id,
+                    tmdb_id=9001,
+                    media_type="tv",
+                    title="测试剧",
+                    status="pending",
+                    season_numbers="[]",
+                )
+                db.add(row)
+                await db.commit()
+                await db.refresh(row)
+                return row
+
+        row = asyncio.run(make_tv_request())
+        csrf_token = self.client.get("/api/v1/account").json()["data"]["csrf_token"]
+        with patch(
+            "app.api.portal_requests.services.add_media_request_season",
+            new=AsyncMock(return_value=row),
+        ) as add_season:
+            response = self.client.post(
+                f"/api/v1/requests/{row.id}/season/2",
+                json={"csrf_token": csrf_token},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["ok"])
+        add_season.assert_awaited_once()
+        self.assertEqual(add_season.await_args.args[2:], (row.id, 2))
+
 
 if __name__ == "__main__":
     unittest.main()
