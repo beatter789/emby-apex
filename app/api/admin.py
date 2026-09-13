@@ -140,6 +140,7 @@ def _request_group_row(group: dict[str, Any]) -> dict[str, Any]:
                 "status": row.status,
                 "created_at": iso_seconds(row.created_at),
                 "rejection_reason": row.rejection_reason,
+                "season_numbers": services._normalize_season_numbers(entry.get("season_numbers")),
             }
         )
     poster_id = items[0]["id"] if items else None
@@ -156,6 +157,7 @@ def _request_group_row(group: dict[str, Any]) -> dict[str, Any]:
         "poster_local_url": f"/api/v1/requests/{poster_id}/poster" if group.get("poster_local_path") and poster_id else "",
         "poster_error": group.get("poster_error") or "",
         "status": group.get("status") or "pending",
+        "season_numbers": services._normalize_season_numbers(group.get("season_numbers")),
         "items": items,
     }
 

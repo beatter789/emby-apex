@@ -67,6 +67,40 @@ _poster_tasks: set[tuple[int, str, int]] = set()
 _background_tasks: set[asyncio.Task[Any]] = set()
 
 
+def _normalize_season_numbers(value: Any) -> list[int]:
+    """Return deterministic, valid season numbers (including season 0).
+
+    Persisted rows may contain malformed JSON or values from older clients.
+    Accept integer-like strings and integral floats, while rejecting booleans,
+    fractional numbers and arbitrary objects so values are never truncated.
+    """
+    if not isinstance(value, (list, tuple, set)):
+        return []
+    result: set[int] = set()
+    for item in value:
+        if isinstance(item, bool):
+            continue
+        if isinstance(item, int):
+            number = item
+        elif isinstance(item, float):
+            if not item.is_integer():
+                continue
+            number = int(item)
+        elif isinstance(item, str):
+            text = item.strip()
+            if not text or not text.lstrip("-").isdigit():
+                continue
+            try:
+                number = int(text)
+            except ValueError:
+                continue
+        else:
+            continue
+        if number >= 0:
+            result.add(number)
+    return sorted(result)
+
+
 def clear_tmdb_cache() -> None:
     """运行期 Key/代理变更后丢弃旧详情，确保下一次请求使用新配置。"""
     _tmdb_details_cache.clear()
@@ -3356,16 +3390,27 @@ async def admin_media_request_groups(
                 "poster_local_path": request_row.poster_local_path,
                 "poster_error": request_row.poster_error,
                 "status": request_row.status,
+                "season_numbers": set(),
                 "items": [],
             },
         )
-        group["items"].append({"request": request_row, "username": username})
+        try:
+            raw_seasons = json.loads(request_row.season_numbers or "[]")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            raw_seasons = []
+        season_values = _normalize_season_numbers(raw_seasons)
+        group["season_numbers"].update(season_values)
+        group["items"].append(
+            {"request": request_row, "username": username, "season_numbers": season_values}
+        )
         if not group["poster_local_path"] and request_row.poster_local_path:
             group["poster_local_path"] = request_row.poster_local_path
         if not group["poster_error"] and request_row.poster_error:
             group["poster_error"] = request_row.poster_error
         if request_row.status == "pending":
             group["status"] = "pending"
+    for group in groups.values():
+        group["season_numbers"] = sorted(group["season_numbers"])
     return list(groups.values())
 
 

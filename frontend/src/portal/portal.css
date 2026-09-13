@@ -802,6 +802,44 @@
   .portal-request-workspace .mp-detail-modal .mp-detail-hero { margin-inline: -14px; padding-inline: 14px; }
 }
 
+/* Compact search controls: remove the enclosing frame and give the action
+   enough width to remain readable on narrow phones. */
+.portal-request-workspace .vue-request-search .search-form {
+  max-width: 760px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  gap: 12px;
+}
+.portal-request-workspace .vue-request-search .search-form input {
+  min-height: 46px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.portal-request-workspace .vue-request-search .search-form button {
+  width: 88px;
+  min-width: 88px;
+  min-height: 46px;
+  padding-inline: 18px;
+}
+
+/* At tablet widths the left rail competes with the content pane. Use the
+   same bottom dock as mobile until there is room for the full sidebar. */
+@media (max-width: 1269px) {
+  .portal-workspace { display: block; width: 100%; }
+  .portal-workspace .portal-sidebar { display: none; }
+  .portal-workspace .portal-page-content,
+  .portal-workspace .vue-request-app { width: 100%; }
+  .portal-workspace .portal-page-content,
+  .portal-request-workspace .vue-request-app { padding-bottom: 96px; }
+  .portal-workspace .apex-mobile-dock { display: flex; }
+}
+@media (min-width: 1270px) {
+  .portal-request-workspace .apex-mobile-dock { display: none; }
+}
+
 /* Active selectors for the copied MoviePilot detail component.  Keep these
    rules scoped to the request shell so the persistent sidebar stays aligned. */
 .portal-request-workspace .mp-detail-modal .mp-detail-hero {
