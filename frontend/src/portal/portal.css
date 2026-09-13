@@ -802,14 +802,6 @@
   .portal-request-workspace .mp-detail-modal .mp-detail-container { padding-inline: 14px; }
   .portal-request-workspace .mp-detail-modal .mp-detail-hero { margin-inline: -14px; padding-inline: 14px; }
 }
-@media (min-width: 681px) and (max-width: 1100px) {
-  .portal-request-workspace .mp-detail-modal .mp-detail-actions {
-    right: 24px;
-    bottom: 28px;
-    width: auto;
-  }
-}
-
 /* Compact search controls: remove the enclosing frame and give the action
    enough width to remain readable on narrow phones. */
 .portal-request-workspace .vue-request-search .search-form {
@@ -944,22 +936,23 @@
   }
 }
 .portal-request-workspace .mp-detail-modal .mp-detail-actions {
-  position: absolute;
-  right: calc(20rem + 24px);
-  bottom: 28px;
-  z-index: 3;
+  position: static;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 12px;
-  margin-top: 16px;
+  justify-content: flex-start;
   overflow: visible;
   width: auto;
   min-width: 0;
-  margin: 0;
+  margin: 1rem 0 0;
   padding: 0;
   background: transparent;
   border: 0;
+}
+.portal-request-workspace .mp-detail-modal .mp-detail-title-section {
+  position: static;
+  padding-bottom: 0;
 }
 .portal-request-workspace .mp-detail-modal .mp-subscribe-action {
   position: relative;
@@ -976,8 +969,11 @@
     width: auto;
     margin-top: 16px;
   }
+  .portal-request-workspace .mp-detail-modal .mp-detail-title-section { padding-bottom: 0; }
 }
 
-@media (min-width: 681px) and (max-width: 1100px) {
-  .portal-request-workspace .mp-detail-modal .mp-detail-actions { right: 24px; bottom: 28px; width: auto; }
+/* Keep the safe-area strip painted with the portal surface on first paint. */
+body.portal-shell {
+  background: #0d0f14;
+  padding-bottom: 0;
 }

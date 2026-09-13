@@ -87,8 +87,8 @@ async def manifest() -> JSONResponse:
             "start_url": "/account",
             "scope": "/",
             "display": "standalone",
-            "background_color": "#0b0912",
-            "theme_color": "#0b0912",
+            "background_color": "#0d0f14",
+            "theme_color": "#0d0f14",
             "icons": [
                 {"src": "/static/logoicon.png", "sizes": "100x100", "type": "image/png"},
                 {"src": "/static/brand-logo.png", "sizes": "1280x1280", "type": "image/png"},

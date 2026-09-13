@@ -57,7 +57,7 @@ body {
   font: var(--font-size)/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif;
   overflow-x: hidden;
 }
-body.portal-shell { padding-bottom: env(safe-area-inset-bottom); }
+body.portal-shell { padding-bottom: 0; background: #0d0f14; }
 body.admin-shell { padding-bottom: 0; }
 .apex-vuetify-app { min-height: 100dvh; min-width: 0; max-width: 100%; background: transparent !important; color: var(--text); }
 .apex-vuetify-app .v-application__wrap { min-height: 100dvh; min-width: 0; max-width: 100%; background: transparent; }
