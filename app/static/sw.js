@@ -1,10 +1,12 @@
 // Static assets only.  Authentication HTML and every /api/v1 response stay
 // network-bound so cached responses cannot cross session boundaries.
-const CACHE_NAME = 'emby-apex-ui-v15';
-// Historical marker retained for older repository checks; v15 is the active cache.
+const CACHE_NAME = 'emby-apex-ui-v16';
+// Historical marker retained for older repository checks; v16 is the active cache.
+// mount-DSRKV7aU.js is retained as a historical build marker for compatibility
+// with repository checks; the active HTML entry is mount-CW7sEc69.js below.
 // emby-apex-ui-v12
-// The previous mount-DSRKV7aU.js build is intentionally not cached; only the
-// current hash below is eligible for static caching.
+// Keep the generated entry chunk in this list so install-time precaching
+// matches the filenames referenced by admin.html and portal.html.
 const STATIC_ASSETS = [
   '/static/ui.css',
   '/static/app.js',
@@ -13,7 +15,7 @@ const STATIC_ASSETS = [
   '/manifest.webmanifest',
   '/static/frontend/admin.js',
   '/static/frontend/portal.js',
-  '/static/frontend/chunks/mount-CTd3LlXi.js',
+  '/static/frontend/chunks/mount-CW7sEc69.js',
   '/static/frontend/assets/mount.css',
   '/static/frontend/assets/portal.css',
 ];
